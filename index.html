@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Move Well Pilates</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-lockup">
+        <h1 class="brand-title">
+          <span class="brand-main">Move Well</span>
+          <span class="brand-pilates">Pilates</span>
+        </h1>
+      </div>
+      <div class="header-actions">
+        <button id="global-settings-btn" class="button icon-button" type="button" aria-label="Open Global Settings" title="Global Settings">&#9881;</button>
+        <button id="new-client-btn" class="button primary">+ New Client</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel clients-panel">
+        <div class="panel-title-row">
+          <h2>Clients</h2>
+          <input id="client-search" type="search" placeholder="Search" />
+        </div>
+        <ul id="client-list" class="client-list"></ul>
+      </aside>
+
+      <section class="panel content-panel">
+        <div class="panel-title-row">
+          <h2 id="active-client-name">Select a client</h2>
+        </div>
+        <div class="tab-row" role="tablist" aria-label="Client sections">
+          <button class="tab active" data-tab="overview">Overview</button>
+          <button class="tab" data-tab="visits">Visits</button>
+          <button class="tab" data-tab="packages">Packages</button>
+          <button class="tab" data-tab="homework">Homework</button>
+          <button class="tab" data-tab="files">Files</button>
+        </div>
+
+        <div id="alerts" class="alerts"></div>
+
+        <section class="tab-panel active" id="overview-panel">
+          <form id="client-form" class="grid-form"></form>
+        </section>
+
+        <section class="tab-panel" id="visits-panel">
+          <form id="visit-form" class="grid-form compact"></form>
+          <div id="visit-history" class="stack-list"></div>
+        </section>
+
+        <section class="tab-panel" id="packages-panel">
+          <div class="integration-bar">
+            <button id="square-import-btn" class="button secondary" type="button">Import Recent Square Payments</button>
+            <small id="square-import-status" class="muted"></small>
+          </div>
+          <form id="package-form" class="grid-form compact"></form>
+          <div id="square-payment-list" class="stack-list"></div>
+          <div id="package-history" class="stack-list"></div>
+        </section>
+
+        <section class="tab-panel" id="homework-panel">
+          <form id="homework-form" class="grid-form"></form>
+          <div id="homework-list" class="stack-list"></div>
+        </section>
+
+        <section class="tab-panel" id="files-panel">
+          <form id="files-form" class="grid-form compact"></form>
+          <div id="files-list" class="stack-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="client-dialog">
+      <form id="client-dialog-form" method="dialog" class="dialog-form">
+        <h3>Add Client</h3>
+        <label>Name <input name="name" required /></label>
+        <label>Email <input type="email" name="email" /></label>
+        <label>Phone <input name="phone" /></label>
+        <menu>
+          <button value="cancel">Cancel</button>
+          <button value="default" class="button primary">Add</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="session-history-dialog">
+      <form method="dialog" class="dialog-form">
+        <h3 id="session-history-title">Session Usage History</h3>
+        <div id="session-history-content"></div>
+        <menu>
+          <button value="cancel" class="button">Close</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="global-settings-dialog">
+      <form method="dialog" class="dialog-form settings-dialog-form">
+        <h3>Global Settings</h3>
+        <div id="square-connection" class="square-connection"></div>
+        <div id="settings-form" class="grid-form"></div>
+        <p class="hint">Square sync imports your latest successful payments. Imported payments can be converted to a package for the selected client.</p>
+        <menu>
+          <button value="cancel" class="button">Close</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="file-viewer-dialog">
+      <form method="dialog" class="dialog-form file-viewer-form">
+        <h3 id="file-viewer-title">File Viewer</h3>
+        <div id="file-viewer-content" class="file-viewer-content"></div>
+        <menu>
+          <a id="file-viewer-download" class="button" href="#" download>Download</a>
+          <button value="cancel" class="button">Close</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

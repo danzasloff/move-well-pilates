@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: move-well-pilates
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: APP_STATE_KEY
+        value: move-well-default
+      - key: SQUARE_ENV
+        value: sandbox
+      - key: SQUARE_VERSION
+        value: 2025-10-16
+      # Set these securely in Render dashboard, not in git:
+      # SUPABASE_URL
+      # SUPABASE_SERVICE_ROLE_KEY
+      # SQUARE_CLIENT_ID
+      # SQUARE_CLIENT_SECRET
+      # SQUARE_REDIRECT_URI
