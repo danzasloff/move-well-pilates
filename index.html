@@ -18,74 +18,104 @@
         </h1>
       </div>
       <div class="header-actions">
-        <button id="global-settings-btn" class="button icon-button" type="button" aria-label="Open Global Settings" title="Global Settings">&#9881;</button>
+        <button id="nav-clients-btn" class="top-nav-link active" type="button">Clients</button>
+        <button id="nav-resources-btn" class="top-nav-link" type="button">Resources</button>
+        <button id="nav-settings-btn" class="top-nav-link" type="button">Settings</button>
         <button id="new-client-btn" class="button primary">+ New Client</button>
       </div>
     </header>
 
-    <main class="layout">
-      <aside class="panel clients-panel">
+    <main>
+      <section id="clients-page" class="app-page active">
+        <div class="layout">
+          <aside class="panel clients-panel">
+            <div class="panel-title-row">
+              <h2>Clients</h2>
+              <input id="client-search" type="search" placeholder="Search" />
+            </div>
+            <ul id="client-list" class="client-list"></ul>
+          </aside>
+
+          <section class="panel content-panel">
+            <div class="panel-title-row">
+              <h2 id="active-client-name">Select a client</h2>
+            </div>
+            <div class="mobile-tab-header">
+              <span id="mobile-active-tab" class="mobile-active-tab-label">Overview</span>
+              <button id="tab-menu-btn" class="button icon-button tab-menu-btn" type="button" aria-label="Open section menu" aria-expanded="false">&#9776;</button>
+            </div>
+            <div class="tab-row" role="tablist" aria-label="Client sections">
+              <button class="tab active" data-tab="overview">Overview</button>
+              <button class="tab" data-tab="visits">Visits</button>
+              <button class="tab" data-tab="packages">Packages</button>
+              <button class="tab" data-tab="homework">Homework</button>
+              <button class="tab" data-tab="files">Files</button>
+            </div>
+
+            <div id="alerts" class="alerts"></div>
+
+            <section class="tab-panel active" id="overview-panel">
+              <form id="client-form" class="grid-form"></form>
+            </section>
+
+            <section class="tab-panel" id="visits-panel">
+              <form id="visit-form" class="grid-form compact"></form>
+              <div id="visit-history" class="stack-list"></div>
+            </section>
+
+            <section class="tab-panel" id="packages-panel">
+              <div class="integration-bar">
+                <button id="square-import-btn" class="button secondary" type="button">Import Recent Square Payments</button>
+                <small id="square-import-status" class="muted"></small>
+              </div>
+              <form id="package-form" class="grid-form compact"></form>
+              <div id="square-payment-list" class="stack-list"></div>
+              <div id="package-history" class="stack-list"></div>
+            </section>
+
+            <section class="tab-panel" id="homework-panel">
+              <form id="homework-form" class="grid-form"></form>
+              <div id="homework-list" class="stack-list"></div>
+            </section>
+
+            <section class="tab-panel" id="files-panel">
+              <form id="files-form" class="grid-form compact"></form>
+              <div id="files-list" class="stack-list"></div>
+            </section>
+          </section>
+        </div>
+      </section>
+
+      <section id="resources-page" class="app-page panel">
         <div class="panel-title-row">
-          <h2>Clients</h2>
-          <input id="client-search" type="search" placeholder="Search" />
+          <h2>Resources</h2>
         </div>
-        <ul id="client-list" class="client-list"></ul>
-      </aside>
+        <p class="hint">Global resources for all clients.</p>
+        <section class="tab-panel active" id="resources-panel">
+          <form id="resources-form" class="grid-form compact"></form>
+          <div id="resources-list" class="stack-list"></div>
+        </section>
+      </section>
 
-      <section class="panel content-panel">
+      <section id="settings-page" class="app-page panel">
         <div class="panel-title-row">
-          <h2 id="active-client-name">Select a client</h2>
+          <h2>Settings</h2>
         </div>
-        <div class="tab-row" role="tablist" aria-label="Client sections">
-          <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="visits">Visits</button>
-          <button class="tab" data-tab="packages">Packages</button>
-          <button class="tab" data-tab="homework">Homework</button>
-          <button class="tab" data-tab="files">Files</button>
-        </div>
-
-        <div id="alerts" class="alerts"></div>
-
-        <section class="tab-panel active" id="overview-panel">
-          <form id="client-form" class="grid-form"></form>
-        </section>
-
-        <section class="tab-panel" id="visits-panel">
-          <form id="visit-form" class="grid-form compact"></form>
-          <div id="visit-history" class="stack-list"></div>
-        </section>
-
-        <section class="tab-panel" id="packages-panel">
-          <div class="integration-bar">
-            <button id="square-import-btn" class="button secondary" type="button">Import Recent Square Payments</button>
-            <small id="square-import-status" class="muted"></small>
-          </div>
-          <form id="package-form" class="grid-form compact"></form>
-          <div id="square-payment-list" class="stack-list"></div>
-          <div id="package-history" class="stack-list"></div>
-        </section>
-
-        <section class="tab-panel" id="homework-panel">
-          <form id="homework-form" class="grid-form"></form>
-          <div id="homework-list" class="stack-list"></div>
-        </section>
-
-        <section class="tab-panel" id="files-panel">
-          <form id="files-form" class="grid-form compact"></form>
-          <div id="files-list" class="stack-list"></div>
-        </section>
+        <div id="square-connection" class="square-connection"></div>
+        <div id="settings-form" class="grid-form"></div>
+        <p class="hint">Square sync imports your latest successful payments. Imported payments can be converted to a package for the selected client.</p>
       </section>
     </main>
 
     <dialog id="client-dialog">
-      <form id="client-dialog-form" method="dialog" class="dialog-form">
+      <form id="client-dialog-form" class="dialog-form">
         <h3>Add Client</h3>
         <label>Name <input name="name" required /></label>
         <label>Email <input type="email" name="email" /></label>
         <label>Phone <input name="phone" /></label>
         <menu>
-          <button value="cancel">Cancel</button>
-          <button value="default" class="button primary">Add</button>
+          <button id="client-dialog-cancel-btn" type="button">Cancel</button>
+          <button type="submit" class="button primary">Add</button>
         </menu>
       </form>
     </dialog>
@@ -94,18 +124,6 @@
       <form method="dialog" class="dialog-form">
         <h3 id="session-history-title">Session Usage History</h3>
         <div id="session-history-content"></div>
-        <menu>
-          <button value="cancel" class="button">Close</button>
-        </menu>
-      </form>
-    </dialog>
-
-    <dialog id="global-settings-dialog">
-      <form method="dialog" class="dialog-form settings-dialog-form">
-        <h3>Global Settings</h3>
-        <div id="square-connection" class="square-connection"></div>
-        <div id="settings-form" class="grid-form"></div>
-        <p class="hint">Square sync imports your latest successful payments. Imported payments can be converted to a package for the selected client.</p>
         <menu>
           <button value="cancel" class="button">Close</button>
         </menu>

@@ -9,12 +9,26 @@ const PACKAGE_TYPES = [
 const STORAGE_KEY = "moveWellClientTrackerV2";
 let cloudSyncEnabled = true;
 let cloudSaveTimer = null;
+const TAB_LABELS = {
+  overview: "Overview",
+  visits: "Visits",
+  packages: "Packages",
+  homework: "Homework",
+  files: "Files",
+};
+
+const TOP_PAGES = {
+  clients: "Clients",
+  resources: "Resources",
+  settings: "Settings",
+};
 
 const appState = {
   clients: [],
   visits: [],
   posturalAnalyses: [],
   files: [],
+  resources: [],
   packages: [],
   homework: [],
   settings: {
@@ -42,6 +56,8 @@ const appState = {
     visitCursor: {},
     posturalFilters: {},
     posturalCursor: {},
+    activeTab: "overview",
+    topPage: "clients",
   },
 };
 
@@ -60,8 +76,11 @@ function loadState() {
     if (!appState.ui.visitCursor) appState.ui.visitCursor = {};
     if (!appState.ui.posturalFilters) appState.ui.posturalFilters = {};
     if (!appState.ui.posturalCursor) appState.ui.posturalCursor = {};
+    if (!TAB_LABELS[appState.ui.activeTab]) appState.ui.activeTab = "overview";
+    if (!TOP_PAGES[appState.ui.topPage]) appState.ui.topPage = "clients";
     if (!Array.isArray(appState.posturalAnalyses)) appState.posturalAnalyses = [];
     if (!Array.isArray(appState.files)) appState.files = [];
+    if (!Array.isArray(appState.resources)) appState.resources = [];
     if (!appState.settings.prices || typeof appState.settings.prices !== "object") {
       appState.settings.prices = {};
     }
@@ -84,6 +103,7 @@ function getPersistableState() {
     visits: appState.visits,
     posturalAnalyses: appState.posturalAnalyses,
     files: appState.files,
+    resources: appState.resources,
     packages: appState.packages,
     homework: appState.homework,
     settings: appState.settings,
@@ -497,7 +517,7 @@ function renderVisitSection(client) {
   history.innerHTML = "";
   if (!client) return;
 
-  const renderNoteHistory = (container, records, filter, getCursorFn, setCursorFn, emptyText) => {
+  const renderNoteHistory = (container, records, filter, getCursorFn, setCursorFn, emptyText, kind, onDelete) => {
     const filtered = records
       .filter((r) => {
         if (filter.from && r.date < filter.from) return false;
@@ -514,6 +534,15 @@ function renderVisitSection(client) {
         card.appendChild(createEl("strong", "", formatDate(item.date)));
         card.appendChild(createEl("p", "", item.notes || "No notes."));
         card.appendChild(createEl("p", "meta", `Created ${formatDate(item.createdAt)}`));
+        const actions = createEl("div", "card-actions");
+        const deleteBtn = createEl("button", "button", `Delete ${kind}`);
+        deleteBtn.type = "button";
+        deleteBtn.addEventListener("click", () => {
+          if (!confirm(`Delete this ${kind.toLowerCase()} from ${formatDate(item.date)}?`)) return;
+          onDelete(item.id);
+        });
+        actions.appendChild(deleteBtn);
+        card.appendChild(actions);
         container.appendChild(card);
       });
     } else if (filtered.length > 0) {
@@ -546,7 +575,13 @@ function renderVisitSection(client) {
       });
 
       const counter = createEl("span", "meta", `Showing ${cursor + 1} of ${filtered.length}`);
-      nav.append(prevBtn, nextBtn, counter);
+      const deleteBtn = createEl("button", "button", `Delete ${kind}`);
+      deleteBtn.type = "button";
+      deleteBtn.addEventListener("click", () => {
+        if (!confirm(`Delete this ${kind.toLowerCase()} from ${formatDate(item.date)}?`)) return;
+        onDelete(item.id);
+      });
+      nav.append(prevBtn, nextBtn, counter, deleteBtn);
       card.appendChild(nav);
       container.appendChild(card);
     }
@@ -593,7 +628,7 @@ function renderVisitSection(client) {
   });
 
   const visitFilter = getVisitFilter(client.id);
-  const visitFilterRow = createEl("div", "card-actions full");
+  const visitFilterRow = createEl("div", "card-actions full filter-row");
   const visitFromInput = createEl("input");
   visitFromInput.type = "date";
   visitFromInput.value = visitFilter.from || "";
@@ -672,7 +707,7 @@ function renderVisitSection(client) {
   });
 
   const posturalFilter = getPosturalFilter(client.id);
-  const posturalFilterRow = createEl("div", "card-actions full");
+  const posturalFilterRow = createEl("div", "card-actions full filter-row");
 
   const posturalFromInput = createEl("input");
   posturalFromInput.type = "date";
@@ -747,7 +782,14 @@ function renderVisitSection(client) {
     posturalFilter,
     () => getPosturalCursor(client.id),
     (value) => { appState.ui.posturalCursor[client.id] = value; },
-    "No postural analysis notes match these filters."
+    "No postural analysis notes match these filters.",
+    "Postural Note",
+    (id) => {
+      appState.posturalAnalyses = appState.posturalAnalyses.filter((p) => p.id !== id);
+      appState.ui.posturalCursor[client.id] = 0;
+      saveState();
+      renderVisitSection(client);
+    }
   );
 
   const sessionHistoryWrap = createEl("section", "card");
@@ -761,7 +803,14 @@ function renderVisitSection(client) {
     visitFilter,
     () => getVisitCursor(client.id),
     (value) => { appState.ui.visitCursor[client.id] = value; },
-    "No session notes match these filters."
+    "No session notes match these filters.",
+    "Session Note",
+    (id) => {
+      appState.visits = appState.visits.filter((v) => v.id !== id);
+      appState.ui.visitCursor[client.id] = 0;
+      saveState();
+      renderVisitSection(client);
+    }
   );
 }
 
@@ -1225,6 +1274,133 @@ function renderFilesSection(client) {
   }
 }
 
+function renderResourcesSection() {
+  const form = document.getElementById("resources-form");
+  const list = document.getElementById("resources-list");
+  form.innerHTML = "";
+  list.innerHTML = "";
+
+  const pickerLabel = createEl("label", "full");
+  pickerLabel.textContent = "Upload resource file(s)";
+  const picker = createEl("input");
+  picker.type = "file";
+  picker.multiple = true;
+  pickerLabel.appendChild(picker);
+
+  const uploadBtn = createEl("button", "button primary", "Upload Resource Files");
+  uploadBtn.type = "button";
+  uploadBtn.classList.add("full");
+  uploadBtn.addEventListener("click", async () => {
+    const files = Array.from(picker.files || []);
+    if (files.length === 0) return;
+    for (const file of files) {
+      const dataUrl = await fileToDataUrl(file);
+      appState.resources.push({
+        id: uid("resource"),
+        kind: "file",
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size || 0,
+        uploadedAt: new Date().toISOString(),
+        dataUrl,
+      });
+    }
+    saveState();
+    renderResourcesSection();
+  });
+
+  const linkTitleLabel = createEl("label");
+  linkTitleLabel.textContent = "Resource Link Title";
+  const linkTitleInput = createEl("input");
+  linkTitleLabel.appendChild(linkTitleInput);
+
+  const linkUrlLabel = createEl("label");
+  linkUrlLabel.textContent = "Resource Link URL";
+  const linkUrlInput = createEl("input");
+  linkUrlInput.type = "url";
+  linkUrlInput.placeholder = "https://";
+  linkUrlLabel.appendChild(linkUrlInput);
+
+  const addLinkBtn = createEl("button", "button", "Add Resource Link");
+  addLinkBtn.type = "button";
+  addLinkBtn.classList.add("full");
+  addLinkBtn.addEventListener("click", () => {
+    const rawUrl = (linkUrlInput.value || "").trim();
+    if (!rawUrl) return;
+    let normalizedUrl = rawUrl;
+    if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
+    try {
+      new URL(normalizedUrl);
+    } catch {
+      alert("Please enter a valid URL.");
+      return;
+    }
+    appState.resources.push({
+      id: uid("resource"),
+      kind: "link",
+      name: (linkTitleInput.value || "").trim() || normalizedUrl,
+      url: normalizedUrl,
+      uploadedAt: new Date().toISOString(),
+    });
+    saveState();
+    renderResourcesSection();
+  });
+
+  form.append(pickerLabel, uploadBtn, linkTitleLabel, linkUrlLabel, addLinkBtn);
+
+  appState.resources
+    .slice()
+    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+    .forEach((resource) => {
+      const card = createEl("article", "card");
+      card.appendChild(createEl("strong", "", resource.name || "Resource"));
+      const actions = createEl("div", "card-actions");
+
+      if (resource.kind === "link") {
+        card.appendChild(createEl("p", "meta", `Link | Added ${formatDate(resource.uploadedAt)}`));
+        const openLink = createEl("a", "button", "Open Link");
+        openLink.href = resource.url;
+        openLink.target = "_blank";
+        openLink.rel = "noopener";
+        actions.appendChild(openLink);
+      } else {
+        card.appendChild(
+          createEl(
+            "p",
+            "meta",
+            `${resource.type || "file"} | ${formatBytes(resource.size)} | Uploaded ${formatDate(resource.uploadedAt)}`
+          )
+        );
+        const viewBtn = createEl("button", "button", "View in App");
+        viewBtn.type = "button";
+        viewBtn.addEventListener("click", () => openFileViewer(resource));
+
+        const downloadBtn = createEl("a", "button", "Open / Download");
+        downloadBtn.href = resource.dataUrl;
+        downloadBtn.target = "_blank";
+        downloadBtn.rel = "noopener";
+        downloadBtn.download = resource.name;
+        actions.append(viewBtn, downloadBtn);
+      }
+
+      const deleteBtn = createEl("button", "button", "Delete");
+      deleteBtn.type = "button";
+      deleteBtn.addEventListener("click", () => {
+        if (!confirm(`Delete resource "${resource.name}"?`)) return;
+        appState.resources = appState.resources.filter((r) => r.id !== resource.id);
+        saveState();
+        renderResourcesSection();
+      });
+      actions.appendChild(deleteBtn);
+      card.appendChild(actions);
+      list.appendChild(card);
+    });
+
+  if (list.children.length === 0) {
+    list.appendChild(createEl("p", "meta", "No shared resources added yet."));
+  }
+}
+
 function getFileExtension(name = "") {
   const idx = name.lastIndexOf(".");
   return idx >= 0 ? name.slice(idx + 1).toLowerCase() : "";
@@ -1310,6 +1486,7 @@ async function openFileViewer(file) {
 function renderSettingsForm() {
   const form = document.getElementById("settings-form");
   const squareCard = document.getElementById("square-connection");
+  if (!form || !squareCard) return;
   form.innerHTML = "";
   squareCard.innerHTML = "";
 
@@ -1413,6 +1590,8 @@ function renderSettingsForm() {
 function render() {
   renderClientList();
   const client = selectedClient();
+  const activeTab = appState.ui.activeTab || "overview";
+  const topPage = appState.ui.topPage || "clients";
   document.getElementById("active-client-name").textContent = client ? client.name || "Unnamed Client" : "Select a client";
   renderAlerts(client);
   renderClientForm(client);
@@ -1420,26 +1599,101 @@ function render() {
   renderPackageSection(client);
   renderHomeworkSection(client);
   renderFilesSection(client);
+  renderResourcesSection();
   renderSettingsForm();
+  setTopPage(topPage);
+  setActiveTab(activeTab);
+}
+
+function setActiveTab(tabKey) {
+  const activeKey = TAB_LABELS[tabKey] ? tabKey : "overview";
+  appState.ui.activeTab = activeKey;
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === activeKey);
+  });
+  document.querySelectorAll("#clients-page .tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === `${activeKey}-panel`);
+  });
+  const label = document.getElementById("mobile-active-tab");
+  if (label) label.textContent = TAB_LABELS[activeKey] || "Overview";
+  const tabRow = document.querySelector(".tab-row");
+  const menuBtn = document.getElementById("tab-menu-btn");
+  if (window.matchMedia("(max-width: 980px)").matches && tabRow) {
+    tabRow.classList.remove("mobile-open");
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
+  }
+}
+
+function setTopPage(pageKey) {
+  const activePage = TOP_PAGES[pageKey] ? pageKey : "clients";
+  appState.ui.topPage = activePage;
+  document.querySelectorAll(".app-page").forEach((page) => {
+    page.classList.toggle("active", page.id === `${activePage}-page`);
+  });
+
+  const clientsBtn = document.getElementById("nav-clients-btn");
+  const resourcesBtn = document.getElementById("nav-resources-btn");
+  const settingsBtn = document.getElementById("nav-settings-btn");
+  if (clientsBtn) clientsBtn.classList.toggle("active", activePage === "clients");
+  if (resourcesBtn) resourcesBtn.classList.toggle("active", activePage === "resources");
+  if (settingsBtn) settingsBtn.classList.toggle("active", activePage === "settings");
+
+  const newClientBtn = document.getElementById("new-client-btn");
+  if (newClientBtn) {
+    newClientBtn.style.display = activePage === "clients" ? "inline-flex" : "none";
+  }
 }
 
 function setupTabs() {
+  const tabRow = document.querySelector(".tab-row");
+  const menuBtn = document.getElementById("tab-menu-btn");
   document.querySelectorAll(".tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-
-      const key = btn.dataset.tab;
-      document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.remove("active"));
-      document.getElementById(`${key}-panel`).classList.add("active");
-    });
+    btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
   });
+  if (menuBtn && tabRow) {
+    menuBtn.addEventListener("click", () => {
+      const open = tabRow.classList.toggle("mobile-open");
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", (event) => {
+      if (!window.matchMedia("(max-width: 980px)").matches) return;
+      const clickInsideTabs = tabRow.contains(event.target) || menuBtn.contains(event.target);
+      if (clickInsideTabs) return;
+      tabRow.classList.remove("mobile-open");
+      menuBtn.setAttribute("aria-expanded", "false");
+    });
+  }
+}
+
+function setupTopNav() {
+  const clientsBtn = document.getElementById("nav-clients-btn");
+  const resourcesBtn = document.getElementById("nav-resources-btn");
+  const settingsBtn = document.getElementById("nav-settings-btn");
+  if (clientsBtn) clientsBtn.addEventListener("click", () => setTopPage("clients"));
+  if (resourcesBtn) resourcesBtn.addEventListener("click", () => setTopPage("resources"));
+  if (settingsBtn) settingsBtn.addEventListener("click", () => setTopPage("settings"));
 }
 
 function setupNewClientDialog() {
   const dialog = document.getElementById("client-dialog");
   const form = document.getElementById("client-dialog-form");
-  document.getElementById("new-client-btn").addEventListener("click", () => dialog.showModal());
+  const cancelBtn = document.getElementById("client-dialog-cancel-btn");
+  const openDialog = () => {
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+      return;
+    }
+    dialog.setAttribute("open", "open");
+  };
+  const closeDialog = () => {
+    if (typeof dialog.close === "function") {
+      dialog.close();
+      return;
+    }
+    dialog.removeAttribute("open");
+  };
+  document.getElementById("new-client-btn").addEventListener("click", openDialog);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeDialog);
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1458,18 +1712,8 @@ function setupNewClientDialog() {
     appState.selectedClientId = client.id;
     saveState();
     form.reset();
-    dialog.close();
+    closeDialog();
     render();
-  });
-}
-
-function setupGlobalSettingsDialog() {
-  const openBtn = document.getElementById("global-settings-btn");
-  const dialog = document.getElementById("global-settings-dialog");
-  if (!openBtn || !dialog) return;
-  openBtn.addEventListener("click", () => {
-    renderSettingsForm();
-    dialog.showModal();
   });
 }
 
@@ -1519,9 +1763,9 @@ async function init() {
   loadState();
   await syncStateFromCloud();
   seedIfEmpty();
+  setupTopNav();
   setupTabs();
   setupNewClientDialog();
-  setupGlobalSettingsDialog();
   setupSquareImportButton();
   document.getElementById("client-search").addEventListener("input", renderClientList);
 
