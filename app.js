@@ -1708,6 +1708,15 @@ function setTopPage(pageKey) {
   if (clientsBtn) clientsBtn.classList.toggle("active", activePage === "clients");
   if (resourcesBtn) resourcesBtn.classList.toggle("active", activePage === "resources");
   if (settingsBtn) settingsBtn.classList.toggle("active", activePage === "settings");
+  closeTopNavMenu();
+}
+
+function closeTopNavMenu() {
+  const menuBtn = document.getElementById("top-nav-menu-btn");
+  const actions = document.querySelector(".header-actions");
+  if (!actions) return;
+  actions.classList.remove("mobile-open");
+  if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
 }
 
 function setupTabs() {
@@ -1735,16 +1744,38 @@ function setupTopNav() {
   const clientsBtn = document.getElementById("nav-clients-btn");
   const resourcesBtn = document.getElementById("nav-resources-btn");
   const settingsBtn = document.getElementById("nav-settings-btn");
+  const menuBtn = document.getElementById("top-nav-menu-btn");
+  const actions = document.querySelector(".header-actions");
   if (clientsBtn) clientsBtn.addEventListener("click", () => setTopPage("clients"));
   if (resourcesBtn) resourcesBtn.addEventListener("click", () => setTopPage("resources"));
   if (settingsBtn) settingsBtn.addEventListener("click", () => setTopPage("settings"));
+
+  if (menuBtn && actions) {
+    menuBtn.addEventListener("click", () => {
+      const open = actions.classList.toggle("mobile-open");
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!window.matchMedia("(max-width: 980px)").matches) return;
+      if (actions.contains(event.target) || menuBtn.contains(event.target)) return;
+      closeTopNavMenu();
+    });
+
+    window.addEventListener("resize", () => {
+      if (!window.matchMedia("(max-width: 980px)").matches) closeTopNavMenu();
+    });
+  }
 }
 
 function setupNewClientDialog() {
   const dialog = document.getElementById("client-dialog");
   const form = document.getElementById("client-dialog-form");
   const cancelBtn = document.getElementById("client-dialog-cancel-btn");
-  document.getElementById("new-client-btn").addEventListener("click", () => openDialog(dialog));
+  document.getElementById("new-client-btn").addEventListener("click", () => {
+    closeTopNavMenu();
+    openDialog(dialog);
+  });
   if (cancelBtn) cancelBtn.addEventListener("click", () => closeDialog(dialog));
 
   form.addEventListener("submit", (e) => {

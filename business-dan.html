@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Business Dan Mode</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Plus+Jakarta+Sans:wght@400;500&display=swap" rel="stylesheet" />
@@ -280,32 +281,96 @@
         const y = h - 58;
         const swing = Math.sin(state.legPhase) * 8;
 
-        ctx.fillStyle = "#2d2a27";
-        ctx.strokeStyle = "#2d2a27";
-        ctx.lineWidth = 3;
+        const drawPerson = (px, py, options = {}) => {
+          const arm = options.armSwing || 0;
+          const leg = options.legSwing || 0;
+          const color = options.color || "#2d2a27";
+          const torsoLean = options.lean || 0;
 
-        ctx.beginPath();
-        ctx.arc(x, y - 34, 10, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = color;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
 
-        ctx.beginPath();
-        ctx.moveTo(x, y - 24);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(px, py - 34, 10, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.beginPath();
-        ctx.moveTo(x, y - 16);
-        ctx.lineTo(x - 14, y - 4 + swing * 0.35);
-        ctx.moveTo(x, y - 16);
-        ctx.lineTo(x + 14, y - 6 - swing * 0.35);
-        ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(px, py - 24);
+          ctx.lineTo(px + torsoLean, py);
+          ctx.stroke();
 
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x - 14, y + 20 + swing);
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + 14, y + 20 - swing);
-        ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(px + torsoLean * 0.5, py - 16);
+          ctx.lineTo(px - 14 + torsoLean, py - 6 + arm);
+          ctx.moveTo(px + torsoLean * 0.5, py - 16);
+          ctx.lineTo(px + 14 + torsoLean, py - 6 - arm);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(px + torsoLean, py);
+          ctx.lineTo(px - 14 + torsoLean, py + 20 + leg);
+          ctx.moveTo(px + torsoLean, py);
+          ctx.lineTo(px + 14 + torsoLean, py + 20 - leg);
+          ctx.stroke();
+        };
+
+        const scene = Math.min(state.currentTask, TASKS.length - 1);
+
+        if (scene === 0) {
+          drawPerson(x, y, { armSwing: swing * 0.2, legSwing: swing * 0.1 });
+          ctx.strokeStyle = "#2d2a27";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(x - 40, y - 18);
+          ctx.lineTo(x + 40, y - 18);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x - 46, y - 18, 7, 0, Math.PI * 2);
+          ctx.arc(x + 46, y - 18, 7, 0, Math.PI * 2);
+          ctx.fillStyle = "#2d2a27";
+          ctx.fill();
+        } else if (scene === 1) {
+          drawPerson(x, y, { armSwing: swing * 0.5, legSwing: swing, lean: 4 });
+        } else if (scene === 2) {
+          const deskX = Math.max(120, Math.min(w - 180, x));
+          ctx.strokeStyle = "#6f6761";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(deskX - 55, y - 6, 120, 40);
+          ctx.fillStyle = "#cfd5d8";
+          ctx.fillRect(deskX - 22, y - 30, 44, 22);
+          drawPerson(deskX - 8, y - 6, { armSwing: 1, legSwing: 0, lean: 2 });
+        } else if (scene === 3) {
+          drawPerson(x - 26, y, { armSwing: 0, legSwing: 0 });
+          drawPerson(x + 26, y, { armSwing: 0, legSwing: 0, color: "#6f6761" });
+          ctx.strokeStyle = "#2d2a27";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x - 12, y - 9);
+          ctx.lineTo(x + 12, y - 9);
+          ctx.stroke();
+        } else if (scene === 4) {
+          ctx.fillStyle = "#ffc3a0";
+          ctx.fillRect(x - 78, y - 4, 156, 34);
+          ctx.strokeStyle = "#e2734a";
+          ctx.strokeRect(x - 78, y - 4, 156, 34);
+          drawPerson(x - 22, y - 4, { armSwing: 0, legSwing: 0 });
+          drawPerson(x + 22, y - 4, { armSwing: 0, legSwing: 0, color: "#6f6761" });
+        } else if (scene === 5) {
+          const cartX = x + 22;
+          drawPerson(x - 8, y, { armSwing: swing * 0.35, legSwing: swing, lean: 5 });
+          ctx.strokeStyle = "#6f6761";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(cartX, y - 16, 44, 26);
+          ctx.beginPath();
+          ctx.arc(cartX + 8, y + 14, 5, 0, Math.PI * 2);
+          ctx.arc(cartX + 36, y + 14, 5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + 8, y - 8);
+          ctx.lineTo(cartX, y - 2);
+          ctx.stroke();
+        }
 
         ctx.fillStyle = "#e2734a";
         ctx.font = "500 16px 'Plus Jakarta Sans'";
