@@ -58,6 +58,7 @@ const appState = {
     posturalCursor: {},
     activeTab: "overview",
     topPage: "clients",
+    resourceSelection: [],
   },
 };
 
@@ -78,6 +79,7 @@ function loadState() {
     if (!appState.ui.posturalCursor) appState.ui.posturalCursor = {};
     if (!TAB_LABELS[appState.ui.activeTab]) appState.ui.activeTab = "overview";
     if (!TOP_PAGES[appState.ui.topPage]) appState.ui.topPage = "clients";
+    if (!Array.isArray(appState.ui.resourceSelection)) appState.ui.resourceSelection = [];
     if (!Array.isArray(appState.posturalAnalyses)) appState.posturalAnalyses = [];
     if (!Array.isArray(appState.files)) appState.files = [];
     if (!Array.isArray(appState.resources)) appState.resources = [];
@@ -202,6 +204,38 @@ function formatBytes(bytes) {
   return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
+function daysBetweenDates(fromDate, toDate) {
+  const from = new Date(fromDate);
+  const to = new Date(toDate);
+  from.setHours(0, 0, 0, 0);
+  to.setHours(0, 0, 0, 0);
+  return Math.round((to - from) / 86400000);
+}
+
+function getNextBirthdayDate(birthdayValue) {
+  if (!birthdayValue || typeof birthdayValue !== "string") return null;
+  const parts = birthdayValue.split("-").map((p) => Number(p));
+  if (parts.length < 3) return null;
+  const month = parts[1];
+  const day = parts[2];
+  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const maxDayThisYear = new Date(currentYear, month, 0).getDate();
+  const thisYearBirthday = new Date(currentYear, month - 1, Math.min(day, maxDayThisYear));
+
+  if (daysBetweenDates(today, thisYearBirthday) >= 0) {
+    return thisYearBirthday;
+  }
+
+  const nextYear = currentYear + 1;
+  const maxDayNextYear = new Date(nextYear, month, 0).getDate();
+  return new Date(nextYear, month - 1, Math.min(day, maxDayNextYear));
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -247,6 +281,24 @@ function createEl(tag, className, text) {
   if (className) el.className = className;
   if (text !== undefined) el.textContent = text;
   return el;
+}
+
+function openDialog(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+    return;
+  }
+  dialog.setAttribute("open", "open");
+}
+
+function closeDialog(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.close === "function") {
+    dialog.close();
+    return;
+  }
+  dialog.removeAttribute("open");
 }
 
 async function apiFetch(path, options = {}) {
@@ -425,24 +477,44 @@ function renderClientList() {
 function renderAlerts(client) {
   const alerts = document.getElementById("alerts");
   alerts.innerHTML = "";
+
+  const birthdayAlerts = appState.clients
+    .filter((c) => c && c.birthday)
+    .map((c) => {
+      const nextBirthday = getNextBirthdayDate(c.birthday);
+      if (!nextBirthday) return null;
+      const daysAway = daysBetweenDates(new Date(), nextBirthday);
+      if (daysAway === 0) {
+        return `Birthday today: ${c.name || "Client"}`;
+      }
+      if (daysAway === 3) {
+        return `Birthday in 3 days: ${c.name || "Client"} (${formatDate(nextBirthday)})`;
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  birthdayAlerts.forEach((message) => {
+    alerts.appendChild(createEl("div", "alert", message));
+  });
+
   if (!client) return;
 
   const { active } = packageSummary(client.id);
   if (!active) {
     alerts.appendChild(createEl("div", "alert", "No active package. Add a package purchase."));
-    return;
-  }
+  } else {
+    const remaining = active.sessionsTotal - active.sessionsUsed;
+    if (remaining <= 1) {
+      alerts.appendChild(createEl("div", "alert", `Only ${remaining} session left in active package.`));
+    }
 
-  const remaining = active.sessionsTotal - active.sessionsUsed;
-  if (remaining <= 1) {
-    alerts.appendChild(createEl("div", "alert", `Only ${remaining} session left in active package.`));
-  }
-
-  const expiresAt = getPackageExpiresAt(active);
-  if (expiresAt) {
-    const days = daysUntil(expiresAt);
-    if (days <= 7) {
-      alerts.appendChild(createEl("div", "alert", `Package expires in ${Math.max(days, 0)} day(s) on ${formatDate(expiresAt)}.`));
+    const expiresAt = getPackageExpiresAt(active);
+    if (expiresAt) {
+      const days = daysUntil(expiresAt);
+      if (days <= 7) {
+        alerts.appendChild(createEl("div", "alert", `Package expires in ${Math.max(days, 0)} day(s) on ${formatDate(expiresAt)}.`));
+      }
     }
   }
 }
@@ -517,86 +589,26 @@ function renderVisitSection(client) {
   history.innerHTML = "";
   if (!client) return;
 
-  const renderNoteHistory = (container, records, filter, getCursorFn, setCursorFn, emptyText, kind, onDelete) => {
-    const filtered = records
-      .filter((r) => {
-        if (filter.from && r.date < filter.from) return false;
-        if (filter.to && r.date > filter.to) return false;
-        if (filter.query && !String(r.notes || "").toLowerCase().includes(filter.query.toLowerCase())) return false;
-        return true;
-      })
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    const hasDateRange = Boolean(filter.from || filter.to);
-    if (hasDateRange) {
-      filtered.forEach((item) => {
-        const card = createEl("article", "card");
-        card.appendChild(createEl("strong", "", formatDate(item.date)));
-        card.appendChild(createEl("p", "", item.notes || "No notes."));
-        card.appendChild(createEl("p", "meta", `Created ${formatDate(item.createdAt)}`));
-        const actions = createEl("div", "card-actions");
-        const deleteBtn = createEl("button", "button", `Delete ${kind}`);
-        deleteBtn.type = "button";
-        deleteBtn.addEventListener("click", () => {
-          if (!confirm(`Delete this ${kind.toLowerCase()} from ${formatDate(item.date)}?`)) return;
-          onDelete(item.id);
-        });
-        actions.appendChild(deleteBtn);
-        card.appendChild(actions);
-        container.appendChild(card);
-      });
-    } else if (filtered.length > 0) {
-      let cursor = getCursorFn();
-      if (cursor < 0) cursor = 0;
-      if (cursor > filtered.length - 1) cursor = filtered.length - 1;
-      setCursorFn(cursor);
-
-      const item = filtered[cursor];
-      const card = createEl("article", "card");
-      card.appendChild(createEl("strong", "", formatDate(item.date)));
-      card.appendChild(createEl("p", "", item.notes || "No notes."));
-      card.appendChild(createEl("p", "meta", `Created ${formatDate(item.createdAt)}`));
-
-      const nav = createEl("div", "card-actions");
-      const prevBtn = createEl("button", "button", "Previous");
-      prevBtn.type = "button";
-      prevBtn.disabled = cursor >= filtered.length - 1;
-      prevBtn.addEventListener("click", () => {
-        setCursorFn(Math.min(filtered.length - 1, cursor + 1));
-        renderVisitSection(client);
-      });
-
-      const nextBtn = createEl("button", "button", "Next");
-      nextBtn.type = "button";
-      nextBtn.disabled = cursor <= 0;
-      nextBtn.addEventListener("click", () => {
-        setCursorFn(Math.max(0, cursor - 1));
-        renderVisitSection(client);
-      });
-
-      const counter = createEl("span", "meta", `Showing ${cursor + 1} of ${filtered.length}`);
-      const deleteBtn = createEl("button", "button", `Delete ${kind}`);
-      deleteBtn.type = "button";
-      deleteBtn.addEventListener("click", () => {
-        if (!confirm(`Delete this ${kind.toLowerCase()} from ${formatDate(item.date)}?`)) return;
-        onDelete(item.id);
-      });
-      nav.append(prevBtn, nextBtn, counter, deleteBtn);
-      card.appendChild(nav);
-      container.appendChild(card);
-    }
-
-    if (container.children.length === 0) {
-      container.appendChild(createEl("p", "meta", emptyText));
-    }
-  };
-
   const sectionHeader = (text) => {
     const label = createEl("p", "meta full", text);
     label.style.fontWeight = "500";
     label.style.margin = "0.4rem 0 0";
     return label;
   };
+
+  const posturalHeader = sectionHeader("Postural Analysis");
+  const posturalNotesLabel = createEl("label", "full");
+  posturalNotesLabel.textContent = "Postural Analysis Notes";
+  const posturalNotesInput = createEl("textarea");
+  const latestLegacyPostural = appState.posturalAnalyses
+    .filter((entry) => entry.clientId === client.id)
+    .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))[0];
+  posturalNotesInput.value = client.posturalAnalysisNotes || latestLegacyPostural?.notes || "";
+  posturalNotesInput.addEventListener("change", () => {
+    client.posturalAnalysisNotes = posturalNotesInput.value;
+    saveState();
+  });
+  posturalNotesLabel.appendChild(posturalNotesInput);
 
   const sessionHeader = sectionHeader("Session Notes");
 
@@ -622,7 +634,6 @@ function renderVisitSection(client) {
       notes: visitNotesInput.value,
       createdAt: new Date().toISOString(),
     });
-    appState.ui.visitCursor[client.id] = 0;
     saveState();
     renderVisitSection(client);
   });
@@ -635,7 +646,6 @@ function renderVisitSection(client) {
   visitFromInput.title = "Session Notes: From date";
   visitFromInput.addEventListener("change", () => {
     visitFilter.from = visitFromInput.value;
-    appState.ui.visitCursor[client.id] = 0;
     renderVisitSection(client);
   });
 
@@ -645,7 +655,6 @@ function renderVisitSection(client) {
   visitToInput.title = "Session Notes: To date";
   visitToInput.addEventListener("change", () => {
     visitFilter.to = visitToInput.value;
-    appState.ui.visitCursor[client.id] = 0;
     renderVisitSection(client);
   });
 
@@ -657,7 +666,6 @@ function renderVisitSection(client) {
   visitQueryInput.addEventListener("input", (event) => {
     const cursorPos = event.target.selectionStart;
     visitFilter.query = visitQueryInput.value;
-    appState.ui.visitCursor[client.id] = 0;
     renderVisitSection(client);
     const nextInput = document.getElementById("visit-search-notes");
     if (nextInput) {
@@ -673,97 +681,13 @@ function renderVisitSection(client) {
     visitFilter.from = "";
     visitFilter.to = "";
     visitFilter.query = "";
-    appState.ui.visitCursor[client.id] = 0;
     renderVisitSection(client);
   });
   visitFilterRow.append(visitFromInput, visitToInput, visitQueryInput, clearVisitBtn);
 
-  const posturalHeader = sectionHeader("Postural Analysis");
-  const posturalDateLabel = createEl("label");
-  posturalDateLabel.textContent = "Date";
-  const posturalDateInput = createEl("input");
-  posturalDateInput.type = "date";
-  posturalDateInput.valueAsDate = new Date();
-  posturalDateLabel.appendChild(posturalDateInput);
-
-  const posturalNotesLabel = createEl("label", "full");
-  posturalNotesLabel.textContent = "Postural Analysis Notes";
-  const posturalNotesInput = createEl("textarea");
-  posturalNotesLabel.appendChild(posturalNotesInput);
-
-  const addPosturalBtn = createEl("button", "button primary", "Add Postural Analysis");
-  addPosturalBtn.type = "button";
-  addPosturalBtn.addEventListener("click", () => {
-    appState.posturalAnalyses.push({
-      id: uid("posture"),
-      clientId: client.id,
-      date: posturalDateInput.value || new Date().toISOString().slice(0, 10),
-      notes: posturalNotesInput.value,
-      createdAt: new Date().toISOString(),
-    });
-    appState.ui.posturalCursor[client.id] = 0;
-    saveState();
-    renderVisitSection(client);
-  });
-
-  const posturalFilter = getPosturalFilter(client.id);
-  const posturalFilterRow = createEl("div", "card-actions full filter-row");
-
-  const posturalFromInput = createEl("input");
-  posturalFromInput.type = "date";
-  posturalFromInput.value = posturalFilter.from || "";
-  posturalFromInput.title = "Postural Analysis: From date";
-  posturalFromInput.addEventListener("change", () => {
-    posturalFilter.from = posturalFromInput.value;
-    appState.ui.posturalCursor[client.id] = 0;
-    renderVisitSection(client);
-  });
-
-  const posturalToInput = createEl("input");
-  posturalToInput.type = "date";
-  posturalToInput.value = posturalFilter.to || "";
-  posturalToInput.title = "Postural Analysis: To date";
-  posturalToInput.addEventListener("change", () => {
-    posturalFilter.to = posturalToInput.value;
-    appState.ui.posturalCursor[client.id] = 0;
-    renderVisitSection(client);
-  });
-
-  const posturalQueryInput = createEl("input");
-  posturalQueryInput.type = "search";
-  posturalQueryInput.id = "postural-search-notes";
-  posturalQueryInput.placeholder = "Search postural notes";
-  posturalQueryInput.value = posturalFilter.query || "";
-  posturalQueryInput.addEventListener("input", (event) => {
-    const cursorPos = event.target.selectionStart;
-    posturalFilter.query = posturalQueryInput.value;
-    appState.ui.posturalCursor[client.id] = 0;
-    renderVisitSection(client);
-    const nextInput = document.getElementById("postural-search-notes");
-    if (nextInput) {
-      nextInput.focus();
-      const safePos = Math.min(cursorPos ?? nextInput.value.length, nextInput.value.length);
-      nextInput.setSelectionRange(safePos, safePos);
-    }
-  });
-
-  const clearPosturalBtn = createEl("button", "button", "Clear Filters");
-  clearPosturalBtn.type = "button";
-  clearPosturalBtn.addEventListener("click", () => {
-    posturalFilter.from = "";
-    posturalFilter.to = "";
-    posturalFilter.query = "";
-    appState.ui.posturalCursor[client.id] = 0;
-    renderVisitSection(client);
-  });
-  posturalFilterRow.append(posturalFromInput, posturalToInput, posturalQueryInput, clearPosturalBtn);
-
   form.append(
     posturalHeader,
-    posturalDateLabel,
     posturalNotesLabel,
-    addPosturalBtn,
-    posturalFilterRow,
     sessionHeader,
     visitDateLabel,
     visitNotesLabel,
@@ -771,47 +695,61 @@ function renderVisitSection(client) {
     visitFilterRow
   );
 
-  const posturalHistoryWrap = createEl("section", "card");
-  posturalHistoryWrap.appendChild(createEl("strong", "", "Postural Analysis History"));
-  const posturalHistoryList = createEl("div", "stack-list");
-  posturalHistoryWrap.appendChild(posturalHistoryList);
-  history.appendChild(posturalHistoryWrap);
-  renderNoteHistory(
-    posturalHistoryList,
-    appState.posturalAnalyses.filter((p) => p.clientId === client.id),
-    posturalFilter,
-    () => getPosturalCursor(client.id),
-    (value) => { appState.ui.posturalCursor[client.id] = value; },
-    "No postural analysis notes match these filters.",
-    "Postural Note",
-    (id) => {
-      appState.posturalAnalyses = appState.posturalAnalyses.filter((p) => p.id !== id);
-      appState.ui.posturalCursor[client.id] = 0;
-      saveState();
-      renderVisitSection(client);
-    }
-  );
-
   const sessionHistoryWrap = createEl("section", "card");
   sessionHistoryWrap.appendChild(createEl("strong", "", "Session Notes History"));
-  const sessionHistoryList = createEl("div", "stack-list");
-  sessionHistoryWrap.appendChild(sessionHistoryList);
+  const filteredSessions = appState.visits
+    .filter((v) => v.clientId === client.id)
+    .filter((v) => {
+      if (visitFilter.from && v.date < visitFilter.from) return false;
+      if (visitFilter.to && v.date > visitFilter.to) return false;
+      if (visitFilter.query && !String(v.notes || "").toLowerCase().includes(visitFilter.query.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (filteredSessions.length === 0) {
+    sessionHistoryWrap.appendChild(createEl("p", "meta", "No session notes match these filters."));
+  } else {
+    const tableWrap = createEl("div", "resources-table-wrap");
+    const table = createEl("table", "resources-table session-notes-table");
+    const thead = createEl("thead");
+    const headRow = createEl("tr");
+    ["Date", "Session Note", "Created", "Edit", "Delete"].forEach((heading) => {
+      headRow.appendChild(createEl("th", "", heading));
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = createEl("tbody");
+    filteredSessions.forEach((item) => {
+      const row = createEl("tr");
+      row.appendChild(createEl("td", "", formatDate(item.date)));
+      row.appendChild(createEl("td", "", item.notes || "No notes."));
+      row.appendChild(createEl("td", "", formatDate(item.createdAt)));
+      const editCell = createEl("td");
+      const editBtn = createEl("button", "text-link", "Edit");
+      editBtn.type = "button";
+      editBtn.addEventListener("click", () => openSessionNoteEditDialog(item.id));
+      editCell.appendChild(editBtn);
+      row.appendChild(editCell);
+      const deleteCell = createEl("td");
+      const deleteBtn = createEl("button", "text-link subdued", "Delete");
+      deleteBtn.type = "button";
+      deleteBtn.addEventListener("click", () => {
+        if (!confirm(`Delete this session note from ${formatDate(item.date)}?`)) return;
+        appState.visits = appState.visits.filter((v) => v.id !== item.id);
+        saveState();
+        renderVisitSection(client);
+      });
+      deleteCell.appendChild(deleteBtn);
+      row.appendChild(deleteCell);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    sessionHistoryWrap.appendChild(tableWrap);
+  }
   history.appendChild(sessionHistoryWrap);
-  renderNoteHistory(
-    sessionHistoryList,
-    appState.visits.filter((v) => v.clientId === client.id),
-    visitFilter,
-    () => getVisitCursor(client.id),
-    (value) => { appState.ui.visitCursor[client.id] = value; },
-    "No session notes match these filters.",
-    "Session Note",
-    (id) => {
-      appState.visits = appState.visits.filter((v) => v.id !== id);
-      appState.ui.visitCursor[client.id] = 0;
-      saveState();
-      renderVisitSection(client);
-    }
-  );
 }
 
 function renderSquarePaymentList(client) {
@@ -921,7 +859,7 @@ function renderPackageSection(client) {
   const squareInput = createEl("input");
   squareLabel.appendChild(squareInput);
 
-  const neverExpiresLabel = createEl("label");
+  const neverExpiresLabel = createEl("label", "inline-checkbox-row");
   neverExpiresLabel.textContent = "Never Expires";
   const neverExpiresInput = createEl("input");
   neverExpiresInput.type = "checkbox";
@@ -930,7 +868,7 @@ function renderPackageSection(client) {
 
   const addBtn = createEl("button", "button primary", "Record Package Purchase");
   addBtn.type = "button";
-  addBtn.classList.add("full");
+  addBtn.classList.add("full", "fit-content-row-cta");
   addBtn.addEventListener("click", () => {
     createPackageRecord(
       client.id,
@@ -1202,7 +1140,7 @@ function renderFilesSection(client) {
   const note = createEl("p", "meta full", "Files are stored locally in this browser for this app.");
   const uploadBtn = createEl("button", "button primary", "Upload Files");
   uploadBtn.type = "button";
-  uploadBtn.classList.add("full");
+  uploadBtn.classList.add("full", "fit-content-row-cta");
   uploadBtn.addEventListener("click", async () => {
     const files = Array.from(picker.files || []);
     if (files.length === 0) return;
@@ -1289,7 +1227,7 @@ function renderResourcesSection() {
 
   const uploadBtn = createEl("button", "button primary", "Upload Resource Files");
   uploadBtn.type = "button";
-  uploadBtn.classList.add("full");
+  uploadBtn.classList.add("full", "fit-content-row-cta");
   uploadBtn.addEventListener("click", async () => {
     const files = Array.from(picker.files || []);
     if (files.length === 0) return;
@@ -1323,7 +1261,7 @@ function renderResourcesSection() {
 
   const addLinkBtn = createEl("button", "button", "Add Resource Link");
   addLinkBtn.type = "button";
-  addLinkBtn.classList.add("full");
+  addLinkBtn.classList.add("full", "fit-content-row-cta");
   addLinkBtn.addEventListener("click", () => {
     const rawUrl = (linkUrlInput.value || "").trim();
     if (!rawUrl) return;
@@ -1348,62 +1286,195 @@ function renderResourcesSection() {
 
   form.append(pickerLabel, uploadBtn, linkTitleLabel, linkUrlLabel, addLinkBtn);
 
-  appState.resources
+  const resources = appState.resources
     .slice()
-    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
-    .forEach((resource) => {
-      const card = createEl("article", "card");
-      card.appendChild(createEl("strong", "", resource.name || "Resource"));
-      const actions = createEl("div", "card-actions");
+    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
 
-      if (resource.kind === "link") {
-        card.appendChild(createEl("p", "meta", `Link | Added ${formatDate(resource.uploadedAt)}`));
-        const openLink = createEl("a", "button", "Open Link");
-        openLink.href = resource.url;
-        openLink.target = "_blank";
-        openLink.rel = "noopener";
-        actions.appendChild(openLink);
-      } else {
-        card.appendChild(
-          createEl(
-            "p",
-            "meta",
-            `${resource.type || "file"} | ${formatBytes(resource.size)} | Uploaded ${formatDate(resource.uploadedAt)}`
-          )
-        );
-        const viewBtn = createEl("button", "button", "View in App");
-        viewBtn.type = "button";
-        viewBtn.addEventListener("click", () => openFileViewer(resource));
+  const selection = new Set(appState.ui.resourceSelection || []);
+  const sendSelectedBtn = createEl("button", "button", "Send Selected to Client");
+  sendSelectedBtn.type = "button";
+  sendSelectedBtn.classList.add("full", "fit-content-row-cta");
+  sendSelectedBtn.disabled = selection.size === 0;
+  sendSelectedBtn.addEventListener("click", () => openResourceShareDialog(Array.from(selection)));
+  form.appendChild(sendSelectedBtn);
 
-        const downloadBtn = createEl("a", "button", "Open / Download");
-        downloadBtn.href = resource.dataUrl;
-        downloadBtn.target = "_blank";
-        downloadBtn.rel = "noopener";
-        downloadBtn.download = resource.name;
-        actions.append(viewBtn, downloadBtn);
-      }
-
-      const deleteBtn = createEl("button", "button", "Delete");
-      deleteBtn.type = "button";
-      deleteBtn.addEventListener("click", () => {
-        if (!confirm(`Delete resource "${resource.name}"?`)) return;
-        appState.resources = appState.resources.filter((r) => r.id !== resource.id);
-        saveState();
-        renderResourcesSection();
-      });
-      actions.appendChild(deleteBtn);
-      card.appendChild(actions);
-      list.appendChild(card);
-    });
-
-  if (list.children.length === 0) {
+  if (resources.length === 0) {
     list.appendChild(createEl("p", "meta", "No shared resources added yet."));
+    return;
   }
+
+  const tableWrap = createEl("div", "resources-table-wrap");
+  const table = createEl("table", "resources-table");
+  const thead = createEl("thead");
+  const headRow = createEl("tr");
+  ["Resource", "Date Added", "Open", "Edit", "Delete", "Send to Client"].forEach((heading) => {
+    headRow.appendChild(createEl("th", "", heading));
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = createEl("tbody");
+  resources.forEach((resource) => {
+    const row = createEl("tr");
+
+    const titleCell = createEl("td");
+    const titleWrap = createEl("div", "resource-title-cell");
+    const checkbox = createEl("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selection.has(resource.id);
+    checkbox.addEventListener("change", () => {
+      const next = new Set(appState.ui.resourceSelection || []);
+      if (checkbox.checked) next.add(resource.id);
+      else next.delete(resource.id);
+      appState.ui.resourceSelection = Array.from(next);
+      renderResourcesSection();
+    });
+    const title = createEl("span", "", resource.name || "Resource");
+    titleWrap.append(checkbox, title);
+    titleCell.appendChild(titleWrap);
+    row.appendChild(titleCell);
+
+    row.appendChild(createEl("td", "", formatDate(resource.uploadedAt)));
+
+    const openCell = createEl("td");
+    if (resource.kind === "link") {
+      const openLink = createEl("a", "table-link", "Open");
+      openLink.href = resource.url;
+      openLink.target = "_blank";
+      openLink.rel = "noopener";
+      openCell.appendChild(openLink);
+    } else {
+      const openLink = createEl("a", "table-link", "Open");
+      openLink.href = resource.dataUrl;
+      openLink.target = "_blank";
+      openLink.rel = "noopener";
+      openLink.download = resource.name;
+      openCell.appendChild(openLink);
+    }
+    row.appendChild(openCell);
+
+    const editCell = createEl("td");
+    const editBtn = createEl("button", "text-link", "Edit");
+    editBtn.type = "button";
+    editBtn.addEventListener("click", () => openResourceEditDialog(resource.id));
+    editCell.appendChild(editBtn);
+    row.appendChild(editCell);
+
+    const deleteCell = createEl("td");
+    const deleteBtn = createEl("button", "text-link subdued", "Delete");
+    deleteBtn.type = "button";
+    deleteBtn.addEventListener("click", () => {
+      if (!confirm(`Delete resource "${resource.name}"?`)) return;
+      appState.resources = appState.resources.filter((r) => r.id !== resource.id);
+      appState.ui.resourceSelection = (appState.ui.resourceSelection || []).filter((id) => id !== resource.id);
+      saveState();
+      renderResourcesSection();
+    });
+    deleteCell.appendChild(deleteBtn);
+    row.appendChild(deleteCell);
+
+    const sendCell = createEl("td");
+    const sendBtn = createEl("button", "text-link", "Send");
+    sendBtn.type = "button";
+    sendBtn.addEventListener("click", () => openResourceShareDialog([resource.id]));
+    sendCell.appendChild(sendBtn);
+    row.appendChild(sendCell);
+
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  list.appendChild(tableWrap);
 }
 
 function getFileExtension(name = "") {
   const idx = name.lastIndexOf(".");
   return idx >= 0 ? name.slice(idx + 1).toLowerCase() : "";
+}
+
+function buildResourceShareText(resources) {
+  const lines = ["Move Well Pilates Resources", ""];
+  resources.forEach((resource, index) => {
+    lines.push(`${index + 1}. ${resource.name || "Resource"}`);
+    if (resource.kind === "link" && resource.url) {
+      lines.push(`   ${resource.url}`);
+    } else {
+      lines.push("   Shared file resource (available in app)");
+    }
+  });
+  return lines.join("\n");
+}
+
+function openSessionNoteEditDialog(sessionId) {
+  const dialog = document.getElementById("session-note-edit-dialog");
+  const form = document.getElementById("session-note-edit-form");
+  const dateInput = document.getElementById("session-note-edit-date");
+  const notesInput = document.getElementById("session-note-edit-notes");
+  if (!dialog || !form || !dateInput || !notesInput) return;
+
+  const session = appState.visits.find((item) => item.id === sessionId);
+  if (!session) return;
+  form.dataset.sessionId = session.id;
+  dateInput.value = session.date || "";
+  notesInput.value = session.notes || "";
+  openDialog(dialog);
+}
+
+function openResourceEditDialog(resourceId) {
+  const dialog = document.getElementById("resource-edit-dialog");
+  const form = document.getElementById("resource-edit-form");
+  const titleInput = document.getElementById("resource-edit-title");
+  const urlWrap = document.getElementById("resource-edit-url-wrap");
+  const urlInput = document.getElementById("resource-edit-url");
+  if (!dialog || !form || !titleInput || !urlWrap || !urlInput) return;
+
+  const resource = appState.resources.find((item) => item.id === resourceId);
+  if (!resource) return;
+
+  form.dataset.resourceId = resource.id;
+  titleInput.value = resource.name || "";
+  const isLink = resource.kind === "link";
+  urlWrap.style.display = isLink ? "grid" : "none";
+  urlInput.required = isLink;
+  urlInput.value = isLink ? (resource.url || "") : "";
+  openDialog(dialog);
+}
+
+function openResourceShareDialog(resourceIds) {
+  const dialog = document.getElementById("resource-share-dialog");
+  const form = document.getElementById("resource-share-form");
+  const count = document.getElementById("resource-share-count");
+  const clientSelect = document.getElementById("resource-share-client");
+  const methodSelect = document.getElementById("resource-share-method");
+  if (!dialog || !form || !count || !clientSelect || !methodSelect) return;
+
+  const cleanIds = Array.from(new Set((resourceIds || []).filter(Boolean)));
+  if (cleanIds.length === 0) {
+    alert("Select at least one resource to send.");
+    return;
+  }
+  if (appState.clients.length === 0) {
+    alert("Add a client first so you can send resources.");
+    return;
+  }
+
+  form.dataset.resourceIds = cleanIds.join(",");
+  count.textContent = `${cleanIds.length} resource(s) selected`;
+
+  clientSelect.innerHTML = "";
+  appState.clients
+    .slice()
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+    .forEach((client) => {
+      const opt = createEl("option", "", client.name || "Unnamed Client");
+      opt.value = client.id;
+      clientSelect.appendChild(opt);
+    });
+  if (appState.selectedClientId && appState.clients.some((c) => c.id === appState.selectedClientId)) {
+    clientSelect.value = appState.selectedClientId;
+  }
+  methodSelect.value = "email";
+  openDialog(dialog);
 }
 
 function getFileViewerType(file) {
@@ -1556,7 +1627,7 @@ function renderSettingsForm() {
     })
   );
 
-  const neverExpiresLabel = createEl("label");
+  const neverExpiresLabel = createEl("label", "inline-checkbox-row");
   neverExpiresLabel.textContent = "Default for new packages: Never Expires";
   const neverExpiresInput = createEl("input");
   neverExpiresInput.type = "checkbox";
@@ -1637,11 +1708,6 @@ function setTopPage(pageKey) {
   if (clientsBtn) clientsBtn.classList.toggle("active", activePage === "clients");
   if (resourcesBtn) resourcesBtn.classList.toggle("active", activePage === "resources");
   if (settingsBtn) settingsBtn.classList.toggle("active", activePage === "settings");
-
-  const newClientBtn = document.getElementById("new-client-btn");
-  if (newClientBtn) {
-    newClientBtn.style.display = activePage === "clients" ? "inline-flex" : "none";
-  }
 }
 
 function setupTabs() {
@@ -1678,22 +1744,8 @@ function setupNewClientDialog() {
   const dialog = document.getElementById("client-dialog");
   const form = document.getElementById("client-dialog-form");
   const cancelBtn = document.getElementById("client-dialog-cancel-btn");
-  const openDialog = () => {
-    if (typeof dialog.showModal === "function") {
-      dialog.showModal();
-      return;
-    }
-    dialog.setAttribute("open", "open");
-  };
-  const closeDialog = () => {
-    if (typeof dialog.close === "function") {
-      dialog.close();
-      return;
-    }
-    dialog.removeAttribute("open");
-  };
-  document.getElementById("new-client-btn").addEventListener("click", openDialog);
-  if (cancelBtn) cancelBtn.addEventListener("click", closeDialog);
+  document.getElementById("new-client-btn").addEventListener("click", () => openDialog(dialog));
+  if (cancelBtn) cancelBtn.addEventListener("click", () => closeDialog(dialog));
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1712,8 +1764,130 @@ function setupNewClientDialog() {
     appState.selectedClientId = client.id;
     saveState();
     form.reset();
-    closeDialog();
+    closeDialog(dialog);
     render();
+  });
+}
+
+function setupResourceDialogs() {
+  const editDialog = document.getElementById("resource-edit-dialog");
+  const editForm = document.getElementById("resource-edit-form");
+  const editCancel = document.getElementById("resource-edit-cancel-btn");
+  const editTitle = document.getElementById("resource-edit-title");
+  const editUrl = document.getElementById("resource-edit-url");
+  if (editDialog && editForm && editCancel && editTitle && editUrl) {
+    editCancel.addEventListener("click", () => closeDialog(editDialog));
+    editForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const resourceId = editForm.dataset.resourceId;
+      const resource = appState.resources.find((item) => item.id === resourceId);
+      if (!resource) return;
+
+      const nextTitle = (editTitle.value || "").trim();
+      if (!nextTitle) {
+        alert("Title is required.");
+        return;
+      }
+      resource.name = nextTitle;
+
+      if (resource.kind === "link") {
+        const rawUrl = (editUrl.value || "").trim();
+        if (!rawUrl) {
+          alert("URL is required for a link resource.");
+          return;
+        }
+        let normalizedUrl = rawUrl;
+        if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
+        try {
+          new URL(normalizedUrl);
+        } catch {
+          alert("Please enter a valid URL.");
+          return;
+        }
+        resource.url = normalizedUrl;
+      }
+
+      resource.updatedAt = new Date().toISOString();
+      saveState();
+      closeDialog(editDialog);
+      renderResourcesSection();
+    });
+  }
+
+  const shareDialog = document.getElementById("resource-share-dialog");
+  const shareForm = document.getElementById("resource-share-form");
+  const shareCancel = document.getElementById("resource-share-cancel-btn");
+  const shareClient = document.getElementById("resource-share-client");
+  const shareMethod = document.getElementById("resource-share-method");
+  if (shareDialog && shareForm && shareCancel && shareClient && shareMethod) {
+    shareCancel.addEventListener("click", () => closeDialog(shareDialog));
+    shareForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const ids = (shareForm.dataset.resourceIds || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (ids.length === 0) return;
+
+      const resources = ids
+        .map((id) => appState.resources.find((item) => item.id === id))
+        .filter(Boolean);
+      if (resources.length === 0) {
+        alert("No resources found to send.");
+        return;
+      }
+
+      const client = appState.clients.find((item) => item.id === shareClient.value);
+      if (!client) {
+        alert("Please select a client.");
+        return;
+      }
+
+      const method = shareMethod.value;
+      const shareText = buildResourceShareText(resources);
+      if (method === "email") {
+        if (!client.email) {
+          alert("This client does not have an email address.");
+          return;
+        }
+        const subject = encodeURIComponent(`Resources from Move Well Pilates`);
+        const body = encodeURIComponent(shareText);
+        window.location.assign(`mailto:${client.email}?subject=${subject}&body=${body}`);
+      } else {
+        if (!client.phone) {
+          alert("This client does not have a phone number.");
+          return;
+        }
+        const body = encodeURIComponent(shareText);
+        window.location.assign(`sms:${client.phone}?body=${body}`);
+      }
+      closeDialog(shareDialog);
+    });
+  }
+}
+
+function setupSessionNoteDialog() {
+  const dialog = document.getElementById("session-note-edit-dialog");
+  const form = document.getElementById("session-note-edit-form");
+  const cancelBtn = document.getElementById("session-note-edit-cancel-btn");
+  const dateInput = document.getElementById("session-note-edit-date");
+  const notesInput = document.getElementById("session-note-edit-notes");
+  if (!dialog || !form || !cancelBtn || !dateInput || !notesInput) return;
+
+  cancelBtn.addEventListener("click", () => closeDialog(dialog));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const sessionId = form.dataset.sessionId;
+    const session = appState.visits.find((item) => item.id === sessionId);
+    if (!session) return;
+
+    session.date = dateInput.value || session.date;
+    session.notes = notesInput.value || "";
+    session.updatedAt = new Date().toISOString();
+    saveState();
+    closeDialog(dialog);
+    const client = selectedClient();
+    if (client) renderVisitSection(client);
   });
 }
 
@@ -1766,6 +1940,8 @@ async function init() {
   setupTopNav();
   setupTabs();
   setupNewClientDialog();
+  setupResourceDialogs();
+  setupSessionNoteDialog();
   setupSquareImportButton();
   document.getElementById("client-search").addEventListener("input", renderClientList);
 

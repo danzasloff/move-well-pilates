@@ -141,6 +141,54 @@
       </form>
     </dialog>
 
+    <dialog id="resource-edit-dialog">
+      <form id="resource-edit-form" class="dialog-form">
+        <h3>Edit Resource</h3>
+        <label>Title <input id="resource-edit-title" name="title" required /></label>
+        <label id="resource-edit-url-wrap">URL <input id="resource-edit-url" name="url" type="url" placeholder="https://" /></label>
+        <menu>
+          <button id="resource-edit-cancel-btn" type="button">Cancel</button>
+          <button type="submit" class="button primary">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="resource-share-dialog">
+      <form id="resource-share-form" class="dialog-form">
+        <h3>Send Resource(s) to Client</h3>
+        <p id="resource-share-count" class="meta"></p>
+        <label>Client
+          <select id="resource-share-client" required></select>
+        </label>
+        <label>Method
+          <select id="resource-share-method" required>
+            <option value="email">Email</option>
+            <option value="sms">Text Message</option>
+          </select>
+        </label>
+        <menu>
+          <button id="resource-share-cancel-btn" type="button">Cancel</button>
+          <button type="submit" class="button primary">Send</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="session-note-edit-dialog">
+      <form id="session-note-edit-form" class="dialog-form">
+        <h3>Edit Session Note</h3>
+        <label>Date <input id="session-note-edit-date" type="date" required /></label>
+        <label>Session Note <textarea id="session-note-edit-notes" required></textarea></label>
+        <menu>
+          <button id="session-note-edit-cancel-btn" type="button">Cancel</button>
+          <button type="submit" class="button primary">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <footer class="app-footer">
+      <p>&copy; 2026 Move Well Pilates. App built by <a href="/business-dan.html" target="_blank" rel="noopener">Business Dan</a>.</p>
+    </footer>
+
     <script src="app.js"></script>
   </body>
 </html>

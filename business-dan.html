@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Dan Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Plus+Jakarta+Sans:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #fdfdfd;
+        --ink: #2d2a27;
+        --muted: #6f6761;
+        --line: #ffd5be;
+        --accent: #e2734a;
+        --soft: #ffc3a0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top left, #fff1e8, var(--bg) 42%);
+      }
+
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 1rem;
+        display: grid;
+        gap: 0.85rem;
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 0.9rem;
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Cormorant Garamond", Georgia, serif;
+        font-size: 2rem;
+      }
+
+      .muted {
+        color: var(--muted);
+        margin: 0.35rem 0 0;
+      }
+
+      .hud {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.6rem;
+      }
+
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.5rem;
+        background: #fffaf7;
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 1.1rem;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+      }
+
+      button,
+      .button-link {
+        border: 1px solid var(--accent);
+        background: #fff;
+        color: var(--accent);
+        border-radius: 999px;
+        padding: 0.5rem 0.95rem;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        text-decoration: none;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      canvas {
+        width: 100%;
+        height: 220px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: linear-gradient(180deg, #fff8f3, #fff);
+      }
+
+      .tasks {
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .task {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.5rem;
+        background: #fff;
+      }
+
+      .task-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.55rem;
+        font-size: 0.92rem;
+      }
+
+      .bar {
+        margin-top: 0.35rem;
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background: #f5e4d9;
+        overflow: hidden;
+      }
+
+      .bar > span {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: var(--accent);
+        transition: width 140ms linear;
+      }
+
+      .event-log {
+        min-height: 2.5rem;
+        color: var(--muted);
+      }
+
+      @media (max-width: 760px) {
+        .hud {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="card">
+        <h1>Business Dan: Hyper Speed Day</h1>
+        <p class="muted">Shane-only Easter Egg: keep Dan moving at warp speed through an absurdly productive day.</p>
+      </section>
+
+      <section class="card hud">
+        <div class="stat"><small>Time Left</small><strong id="time-left">60s</strong></div>
+        <div class="stat"><small>Dan Speed</small><strong id="speed">1.0x</strong></div>
+        <div class="stat"><small>Completed</small><strong id="done">0 / 6</strong></div>
+        <div class="stat"><small>Mood</small><strong id="mood">Locked In</strong></div>
+      </section>
+
+      <section class="card controls">
+        <button id="start-btn" class="primary" type="button">Start Dan Mode</button>
+        <button id="boost-btn" type="button" disabled>Boost Dan</button>
+        <button id="pause-btn" type="button" disabled>Pause</button>
+        <button id="reset-btn" type="button">Reset</button>
+        <a class="button-link" href="/">Back to Tracker</a>
+      </section>
+
+      <section class="card">
+        <canvas id="dan-canvas" width="960" height="220"></canvas>
+        <p id="event-log" class="event-log">Hit <strong>Start Dan Mode</strong> and help Dan complete everything fast.</p>
+      </section>
+
+      <section id="tasks" class="card tasks"></section>
+    </main>
+
+    <script>
+      const TASKS = [
+        "Workout",
+        "Go For A Run",
+        "Work Sprint",
+        "Date Night Plan",
+        "Movie With Wife",
+        "Grocery Shopping"
+      ];
+
+      const state = {
+        running: false,
+        paused: false,
+        timeLeft: 60,
+        speed: 1,
+        boostUntil: 0,
+        x: 50,
+        legPhase: 0,
+        currentTask: 0,
+        progress: TASKS.map(() => 0),
+        done: 0,
+        mood: "Locked In",
+        raf: null,
+        lastTs: 0,
+        lastEventAt: 0,
+      };
+
+      const el = {
+        time: document.getElementById("time-left"),
+        speed: document.getElementById("speed"),
+        done: document.getElementById("done"),
+        mood: document.getElementById("mood"),
+        log: document.getElementById("event-log"),
+        start: document.getElementById("start-btn"),
+        boost: document.getElementById("boost-btn"),
+        pause: document.getElementById("pause-btn"),
+        reset: document.getElementById("reset-btn"),
+        tasks: document.getElementById("tasks"),
+        canvas: document.getElementById("dan-canvas"),
+      };
+
+      const ctx = el.canvas.getContext("2d");
+
+      function renderTasks() {
+        el.tasks.innerHTML = "";
+        TASKS.forEach((task, index) => {
+          const wrap = document.createElement("div");
+          wrap.className = "task";
+
+          const top = document.createElement("div");
+          top.className = "task-top";
+
+          const title = document.createElement("span");
+          title.textContent = task;
+
+          const pct = document.createElement("span");
+          const value = Math.min(100, Math.floor(state.progress[index]));
+          pct.textContent = value >= 100 ? "Done" : value + "%";
+
+          top.append(title, pct);
+
+          const bar = document.createElement("div");
+          bar.className = "bar";
+          const fill = document.createElement("span");
+          fill.style.width = value + "%";
+          bar.appendChild(fill);
+
+          wrap.append(top, bar);
+          el.tasks.appendChild(wrap);
+        });
+      }
+
+      function updateHUD() {
+        el.time.textContent = Math.max(0, Math.ceil(state.timeLeft)) + "s";
+        el.speed.textContent = state.speed.toFixed(1) + "x";
+        el.done.textContent = state.done + " / " + TASKS.length;
+        el.mood.textContent = state.mood;
+      }
+
+      function drawDan() {
+        const w = el.canvas.width;
+        const h = el.canvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.strokeStyle = "#ffd5be";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < w; i += 32) {
+          ctx.beginPath();
+          ctx.moveTo(i, h - 24);
+          ctx.lineTo(i + 14, h - 18);
+          ctx.stroke();
+        }
+
+        const x = state.x;
+        const y = h - 58;
+        const swing = Math.sin(state.legPhase) * 8;
+
+        ctx.fillStyle = "#2d2a27";
+        ctx.strokeStyle = "#2d2a27";
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+        ctx.arc(x, y - 34, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(x, y - 24);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x, y - 16);
+        ctx.lineTo(x - 14, y - 4 + swing * 0.35);
+        ctx.moveTo(x, y - 16);
+        ctx.lineTo(x + 14, y - 6 - swing * 0.35);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 14, y + 20 + swing);
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 14, y + 20 - swing);
+        ctx.stroke();
+
+        ctx.fillStyle = "#e2734a";
+        ctx.font = "500 16px 'Plus Jakarta Sans'";
+        ctx.fillText("DAN", x - 16, y - 48);
+
+        const taskText = TASKS[state.currentTask] || "Legendary Finish";
+        ctx.fillStyle = "#6f6761";
+        ctx.font = "500 18px 'Plus Jakarta Sans'";
+        ctx.fillText("Current Mission: " + taskText, 24, 28);
+      }
+
+      function pushEvent(text) {
+        el.log.textContent = text;
+      }
+
+      function randomEventLine() {
+        const lines = [
+          "Dan just replied to 14 emails while lunging.",
+          "Dan tied his running shoes in 0.4 seconds.",
+          "Dan meal-prepped and wrote a business plan between traffic lights.",
+          "Dan is somehow both early and already done.",
+          "Dan watched a full movie preview while foam rolling.",
+        ];
+        return lines[Math.floor(Math.random() * lines.length)];
+      }
+
+      function completeTask(index) {
+        state.done += 1;
+        pushEvent("Completed: " + TASKS[index] + " at turbo pace.");
+
+        if (state.done >= TASKS.length) {
+          state.running = false;
+          state.paused = false;
+          state.mood = "Unstoppable";
+          el.boost.disabled = true;
+          el.pause.disabled = true;
+          el.start.disabled = false;
+          pushEvent("All done. Dan finished a whole day before lunch.");
+          updateHUD();
+          renderTasks();
+          return;
+        }
+
+        state.currentTask += 1;
+      }
+
+      function tick(ts) {
+        if (!state.running) return;
+        if (state.paused) {
+          state.raf = requestAnimationFrame(tick);
+          return;
+        }
+
+        if (!state.lastTs) state.lastTs = ts;
+        const dt = Math.min(0.05, (ts - state.lastTs) / 1000);
+        state.lastTs = ts;
+
+        const boosted = ts < state.boostUntil;
+        const targetSpeed = boosted ? 2.6 : 1 + Math.min(1.2, (60 - state.timeLeft) * 0.03);
+        state.speed += (targetSpeed - state.speed) * 0.18;
+
+        state.timeLeft -= dt;
+        if (state.timeLeft <= 0) {
+          state.timeLeft = 0;
+          state.running = false;
+          state.mood = state.done >= TASKS.length ? "Unstoppable" : "Still Impressive";
+          el.boost.disabled = true;
+          el.pause.disabled = true;
+          el.start.disabled = false;
+          if (state.done >= TASKS.length) {
+            pushEvent("Dan still won. Time barely mattered.");
+          } else {
+            pushEvent("Time up. Dan finished " + state.done + " of " + TASKS.length + " missions.");
+          }
+          updateHUD();
+          renderTasks();
+          drawDan();
+          return;
+        }
+
+        state.x += dt * 260 * state.speed;
+        if (state.x > el.canvas.width - 24) state.x = 40;
+        state.legPhase += dt * 12 * state.speed;
+
+        if (state.currentTask < TASKS.length) {
+          state.progress[state.currentTask] += dt * (18 + state.speed * 22);
+          if (state.progress[state.currentTask] >= 100) {
+            state.progress[state.currentTask] = 100;
+            completeTask(state.currentTask);
+          }
+        }
+
+        if (ts - state.lastEventAt > 4600) {
+          state.lastEventAt = ts;
+          pushEvent(randomEventLine());
+        }
+
+        state.mood = boosted ? "Hyper Focus" : (state.speed > 1.9 ? "Flying" : "Locked In");
+
+        updateHUD();
+        renderTasks();
+        drawDan();
+        state.raf = requestAnimationFrame(tick);
+      }
+
+      function startGame() {
+        state.running = true;
+        state.paused = false;
+        state.lastTs = 0;
+        el.start.disabled = true;
+        el.boost.disabled = false;
+        el.pause.disabled = false;
+        el.pause.textContent = "Pause";
+        pushEvent("Dan launched. No one can stop this calendar speedrun.");
+        cancelAnimationFrame(state.raf);
+        state.raf = requestAnimationFrame(tick);
+      }
+
+      function resetGame() {
+        cancelAnimationFrame(state.raf);
+        state.running = false;
+        state.paused = false;
+        state.timeLeft = 60;
+        state.speed = 1;
+        state.boostUntil = 0;
+        state.x = 50;
+        state.legPhase = 0;
+        state.currentTask = 0;
+        state.progress = TASKS.map(() => 0);
+        state.done = 0;
+        state.mood = "Locked In";
+        state.lastTs = 0;
+        state.lastEventAt = 0;
+
+        el.start.disabled = false;
+        el.boost.disabled = true;
+        el.pause.disabled = true;
+        el.pause.textContent = "Pause";
+        pushEvent("Hit Start Dan Mode and help Dan complete everything fast.");
+        updateHUD();
+        renderTasks();
+        drawDan();
+      }
+
+      el.start.addEventListener("click", () => {
+        if (!state.running) startGame();
+      });
+
+      el.boost.addEventListener("click", () => {
+        if (!state.running || state.paused) return;
+        state.boostUntil = performance.now() + 2800;
+        pushEvent("Boost activated: Dan is now a blur.");
+      });
+
+      el.pause.addEventListener("click", () => {
+        if (!state.running) return;
+        state.paused = !state.paused;
+        el.pause.textContent = state.paused ? "Resume" : "Pause";
+        pushEvent(state.paused ? "Dan took a strategic 3-second pause." : "Dan resumed at full speed.");
+      });
+
+      el.reset.addEventListener("click", resetGame);
+
+      resetGame();
+    </script>
+  </body>
+</html>
