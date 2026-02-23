@@ -312,18 +312,21 @@ main {
   display: block;
   width: 18px;
   height: 12px;
+  margin: 0 auto;
+  flex: 0 0 auto;
 }
 
 .hamburger-glyph::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 0;
+  top: 50%;
+  transform: translateY(-50%);
   width: 18px;
   height: 2px;
   border-radius: 2px;
   background: var(--cta);
-  box-shadow: 0 5px 0 var(--cta), 0 10px 0 var(--cta);
+  box-shadow: 0 -5px 0 var(--cta), 0 5px 0 var(--cta);
 }
 
 .client-list {
@@ -379,6 +382,10 @@ main {
 
 .grid-form.compact {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-form > * {
+  min-width: 0;
 }
 
 label {
@@ -927,6 +934,7 @@ menu {
   #homework-list textarea,
   #homework-form input,
   #homework-form textarea,
+  #visit-form label,
   #visit-form input,
   #visit-form textarea,
   #visit-form select,
@@ -940,53 +948,61 @@ menu {
     min-width: 0;
   }
 
+  #visit-form,
+  #visit-history {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
   .resources-table {
     min-width: 700px;
   }
 
   .session-notes-table {
-    min-width: 100%;
-    table-layout: fixed;
+    min-width: 640px;
+    table-layout: auto;
   }
 
   .session-notes-table th,
   .session-notes-table td {
     padding: 0.45rem;
     font-size: 0.86rem;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: normal;
+    word-break: normal;
   }
 
   .session-notes-table th:nth-child(1),
   .session-notes-table td:nth-child(1) {
-    width: 20%;
-    white-space: normal;
+    width: 104px;
+    white-space: nowrap;
   }
 
   .session-notes-table th:nth-child(3),
   .session-notes-table td:nth-child(3) {
-    width: 20%;
-    white-space: normal;
+    width: 104px;
+    white-space: nowrap;
   }
 
   .session-notes-table th:nth-child(4),
   .session-notes-table td:nth-child(4) {
-    width: 8%;
-    white-space: normal;
+    width: 72px;
+    white-space: nowrap;
     text-align: right;
   }
 
   .session-notes-table th:nth-child(5),
   .session-notes-table td:nth-child(5) {
-    width: 8%;
-    white-space: normal;
+    width: 72px;
+    white-space: nowrap;
     text-align: right;
   }
 
   .session-notes-table th:nth-child(2),
   .session-notes-table td:nth-child(2) {
-    width: 44%;
-    min-width: 0;
+    width: auto;
+    min-width: 240px;
     white-space: normal;
     overflow-wrap: anywhere;
   }
