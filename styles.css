@@ -416,6 +416,13 @@ select {
   background: #fff;
 }
 
+input[type="file"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+}
+
 input:focus,
 textarea:focus,
 select:focus {
@@ -434,10 +441,14 @@ textarea {
   border-radius: 999px;
   padding: 0.52rem 0.8rem;
   background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   text-decoration: none;
   color: var(--ink);
   font-weight: 500;
+  text-align: center;
 }
 
 .button.primary {
@@ -566,7 +577,9 @@ textarea {
 
 .resources-table-wrap {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
@@ -736,6 +749,11 @@ menu {
 }
 
 @media (max-width: 980px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
   body {
     background: var(--bg);
   }
@@ -804,6 +822,8 @@ menu {
 
   .panel {
     padding: 0.7rem;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .panel-title-row h2 {
@@ -848,6 +868,8 @@ menu {
 
   .tab-panel {
     margin-top: 0.5rem;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .stack-list {
@@ -856,6 +878,8 @@ menu {
 
   .card {
     padding: 0.65rem;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .integration-bar {
@@ -884,6 +908,7 @@ menu {
   .card-actions a.button {
     width: 100%;
     min-width: 0;
+    max-width: 100%;
   }
 
   .card-actions {
@@ -900,10 +925,19 @@ menu {
   }
 
   #homework-list textarea,
+  #homework-form input,
   #homework-form textarea,
+  #visit-form input,
+  #visit-form textarea,
+  #visit-form select,
+  #files-form input,
+  #files-form textarea,
+  #files-form select,
   #files-form,
   #resources-form {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .resources-table {
@@ -911,45 +945,48 @@ menu {
   }
 
   .session-notes-table {
-    min-width: 560px;
+    min-width: 100%;
+    table-layout: fixed;
   }
 
   .session-notes-table th,
   .session-notes-table td {
     padding: 0.45rem;
     font-size: 0.86rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .session-notes-table th:nth-child(1),
   .session-notes-table td:nth-child(1) {
-    width: 88px;
-    white-space: nowrap;
+    width: 20%;
+    white-space: normal;
   }
 
   .session-notes-table th:nth-child(3),
   .session-notes-table td:nth-child(3) {
-    width: 88px;
-    white-space: nowrap;
+    width: 20%;
+    white-space: normal;
   }
 
   .session-notes-table th:nth-child(4),
   .session-notes-table td:nth-child(4) {
-    width: 56px;
-    white-space: nowrap;
+    width: 8%;
+    white-space: normal;
     text-align: right;
   }
 
   .session-notes-table th:nth-child(5),
   .session-notes-table td:nth-child(5) {
-    width: 56px;
-    white-space: nowrap;
+    width: 8%;
+    white-space: normal;
     text-align: right;
   }
 
   .session-notes-table th:nth-child(2),
   .session-notes-table td:nth-child(2) {
-    width: auto;
-    min-width: 220px;
+    width: 44%;
+    min-width: 0;
     white-space: normal;
     overflow-wrap: anywhere;
   }
