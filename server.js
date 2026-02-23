@@ -279,7 +279,23 @@ app.get("/api/health", async (req, res) => {
     supabase: hasSupabase(),
     squareConfigured: !!(SQUARE_CLIENT_ID && SQUARE_CLIENT_SECRET),
     adminAuthConfigured: ADMIN_USERS.length > 0,
+    smtpConfigured: smtpConfigured(),
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/diagnostics/smtp", (req, res) => {
+  res.json({
+    smtpConfigured: smtpConfigured(),
+    checks: {
+      nodemailerLoaded: !!nodemailer,
+      SMTP_HOST: !!SMTP_HOST,
+      SMTP_PORT: !!SMTP_PORT,
+      SMTP_USER: !!SMTP_USER,
+      SMTP_PASS: !!SMTP_PASS,
+      SMTP_FROM: !!SMTP_FROM,
+      INQUIRY_TO_EMAIL: !!INQUIRY_TO_EMAIL,
+    },
   });
 });
 
