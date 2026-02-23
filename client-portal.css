@@ -1,10 +1,12 @@
 :root {
-  --bg: #fdfdfd;
+  --bg: #f7f7f8;
   --panel: #ffffff;
-  --ink: #2d2a27;
-  --muted: #6f6761;
-  --line: #ffd5be;
+  --ink: #1f1f23;
+  --muted: #6b6b73;
+  --line: #e6e7eb;
   --accent: #e2734a;
+  --cta: #0dc9c9;
+  --focus-ring: rgba(13, 201, 201, 0.25);
 }
 
 * {
@@ -14,7 +16,7 @@
 body {
   margin: 0;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top left, #fff1e8, var(--bg) 42%);
+  background: radial-gradient(circle at top left, #f1fbfb, var(--bg) 44%);
   color: var(--ink);
 }
 
@@ -107,12 +109,20 @@ select {
   background: #fff;
 }
 
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--cta);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 .button {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.5rem 0.95rem;
   background: #fff;
-  color: var(--accent);
+  color: var(--ink);
   text-decoration: none;
   font-weight: 500;
   cursor: pointer;
@@ -120,7 +130,16 @@ select {
 
 .button.primary {
   background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
+}
+
+.button:hover {
+  background: #f3f4f6;
+}
+
+.button.primary:hover {
+  background: #d9683f;
 }
 
 .error {

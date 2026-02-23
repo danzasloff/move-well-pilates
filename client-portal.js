@@ -6,6 +6,7 @@ const el = {
   loginEmail: document.getElementById("login-email"),
   loginLast4: document.getElementById("login-last4"),
   loginError: document.getElementById("login-error"),
+  inquiryCard: document.getElementById("inquiry-card"),
   portalCard: document.getElementById("portal-card"),
   clientName: document.getElementById("client-name"),
   clientContact: document.getElementById("client-contact"),
@@ -66,6 +67,7 @@ function setLoginError(message) {
 
 function setSignedInState(signedIn) {
   el.loginCard.hidden = signedIn;
+  if (el.inquiryCard) el.inquiryCard.hidden = signedIn;
   el.portalCard.hidden = !signedIn;
 }
 

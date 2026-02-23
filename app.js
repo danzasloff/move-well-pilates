@@ -302,6 +302,33 @@ function createEl(tag, className, text) {
   return el;
 }
 
+function createTrashIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("text-link-icon-svg");
+
+  const path1 = document.createElementNS(ns, "path");
+  path1.setAttribute("d", "M3 6h18");
+  const path2 = document.createElementNS(ns, "path");
+  path2.setAttribute("d", "M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2");
+  const path3 = document.createElementNS(ns, "path");
+  path3.setAttribute("d", "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6");
+  const path4 = document.createElementNS(ns, "path");
+  path4.setAttribute("d", "M10 11v6");
+  const path5 = document.createElementNS(ns, "path");
+  path5.setAttribute("d", "M14 11v6");
+
+  svg.append(path1, path2, path3, path4, path5);
+  return svg;
+}
+
 function openDialog(dialog) {
   if (!dialog) return;
   if (typeof dialog.showModal === "function") {
@@ -589,8 +616,11 @@ function renderClientForm(client) {
   form.appendChild(healthLabel);
 
   const deleteRow = createEl("div", "full align-right");
-  const deleteBtn = createEl("button", "text-link subdued", "Delete Client");
+  const deleteBtn = createEl("button", "text-link subdued icon-link");
   deleteBtn.type = "button";
+  const deleteIcon = createTrashIcon();
+  const deleteText = createEl("span", "", "Delete Client");
+  deleteBtn.append(deleteIcon, deleteText);
   deleteBtn.addEventListener("click", () => {
     if (!confirm("Delete this client and all related records?")) return;
     appState.clients = appState.clients.filter((c) => c.id !== client.id);
@@ -652,6 +682,7 @@ function renderVisitSection(client) {
 
   const addVisitBtn = createEl("button", "button primary", "Add Session Note");
   addVisitBtn.type = "button";
+  addVisitBtn.classList.add("full", "fit-content-row-cta");
   addVisitBtn.addEventListener("click", () => {
     appState.visits.push({
       id: uid("visit"),
@@ -1001,6 +1032,7 @@ function renderHomeworkSection(client) {
 
   const addBtn = createEl("button", "button primary", "Add Homework Item");
   addBtn.type = "button";
+  addBtn.classList.add("full", "fit-content-row-cta");
   addBtn.addEventListener("click", async () => {
     const uploadFiles = Array.from(videoInput.files || []);
     const videos = [];
@@ -1197,14 +1229,11 @@ function renderFilesSection(client) {
     .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
     .forEach((file) => {
       const card = createEl("article", "card");
-      card.appendChild(createEl("strong", "", file.name));
-      card.appendChild(
-        createEl(
-          "p",
-          "meta",
-          `${file.type} | ${formatBytes(file.size)} | Uploaded ${formatDate(file.uploadedAt)}`
-        )
-      );
+      const metaRow = createEl("p", "meta file-meta-row");
+      const fileName = createEl("span", "file-name-inline", file.name);
+      const fileDetails = createEl("span", "file-detail-inline", `| ${formatBytes(file.size)} | Uploaded ${formatDate(file.uploadedAt)}`);
+      metaRow.append(fileName, fileDetails);
+      card.appendChild(metaRow);
 
       const actions = createEl("div", "card-actions");
       const viewBtn = createEl("button", "button", "View in App");
@@ -1213,7 +1242,7 @@ function renderFilesSection(client) {
         openFileViewer(file);
       });
 
-      const openLink = createEl("a", "button", "Open / Download");
+      const openLink = createEl("a", "button", "Download");
       openLink.href = file.dataUrl;
       openLink.target = "_blank";
       openLink.rel = "noopener";

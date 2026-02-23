@@ -1,14 +1,15 @@
 :root {
-  --bg: #fdfdfd;
-  --panel: #fdfdfd;
-  --ink: #2d2a27;
-  --muted: #6f6761;
-  --line: #ffd5be;
-  --accent: #E2734A;
-  --accent-soft: #ffc3a0;
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --ink: #1f1f23;
+  --muted: #6b6b73;
+  --line: #e6e7eb;
+  --accent: #e2734a;
+  --accent-soft: #f3c2ad;
   --cta: #0dc9c9;
   --cta-soft: #8bd6d6;
   --warn: #b25f30;
+  --focus-ring: rgba(13, 201, 201, 0.25);
 }
 
 * {
@@ -18,14 +19,17 @@
 body {
   margin: 0;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top left, #fff1e8, var(--bg) 42%);
+  background: radial-gradient(circle at top left, #f1fbfb, var(--bg) 44%);
   color: var(--ink);
 }
 
 .admin-login-view {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.35rem;
   padding: 1rem;
 }
 
@@ -44,6 +48,13 @@ body {
 
 .admin-login-card h2 {
   margin: 0 0 0.45rem;
+}
+
+.admin-login-brand {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1;
+  text-align: center;
 }
 
 .stack {
@@ -101,7 +112,7 @@ h3 {
 }
 
 .top-nav-link.active {
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .brand-lockup {
@@ -262,8 +273,8 @@ main {
 }
 
 .tab.active {
-  border-bottom-color: var(--accent);
-  color: var(--accent);
+  border-bottom-color: var(--cta);
+  color: var(--ink);
 }
 
 .tab:focus,
@@ -290,7 +301,7 @@ main {
   display: inline-grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--cta);
   border-radius: 50%;
   background: #fff;
   line-height: 0;
@@ -311,8 +322,8 @@ main {
   width: 18px;
   height: 2px;
   border-radius: 2px;
-  background: var(--accent);
-  box-shadow: 0 5px 0 var(--accent), 0 10px 0 var(--accent);
+  background: var(--cta);
+  box-shadow: 0 5px 0 var(--cta), 0 10px 0 var(--cta);
 }
 
 .client-list {
@@ -342,14 +353,14 @@ main {
 }
 
 .client-item.active {
-  background: #fff;
-  border: 2px solid var(--accent);
-  color: var(--accent);
+  background: #f4fdfd;
+  border: 2px solid var(--cta);
+  color: var(--ink);
 }
 
 .client-item.active strong {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .client-item small {
@@ -405,31 +416,48 @@ select {
   background: #fff;
 }
 
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--cta);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 textarea {
   min-height: 90px;
   resize: vertical;
 }
 
 .button {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.52rem 0.8rem;
   background: #fff;
   cursor: pointer;
   text-decoration: none;
-  color: var(--accent);
+  color: var(--ink);
   font-weight: 500;
 }
 
 .button.primary {
   background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 
 .button.secondary {
   background: #fff;
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.button:hover {
+  background: #f3f4f6;
+}
+
+.button.primary:hover {
+  background: #d9683f;
 }
 
 .fit-content-row-cta {
@@ -457,6 +485,25 @@ textarea {
   color: #9a9a9a;
 }
 
+.icon-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.text-link-icon {
+  font-size: 0.82rem;
+  line-height: 1;
+  color: inherit;
+}
+
+.text-link-icon-svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  color: inherit;
+}
+
 .full {
   grid-column: 1 / -1;
 }
@@ -474,7 +521,7 @@ textarea {
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  color: var(--accent) !important;
+  color: #cf6f48 !important;
   font-weight: 500;
 }
 
@@ -494,6 +541,23 @@ textarea {
 .card .meta {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.file-meta-row {
+  margin: 0 0 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.file-name-inline {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.file-detail-inline {
+  color: var(--muted);
 }
 
 .card textarea {
@@ -538,7 +602,7 @@ textarea {
 }
 
 .table-link {
-  color: var(--accent);
+  color: #128b8b;
   text-decoration: none;
 }
 
@@ -593,9 +657,9 @@ textarea {
 .square-connection {
   margin-bottom: 0.85rem;
   padding: 0.7rem;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--cta-soft);
   border-radius: 10px;
-  background: #fff;
+  background: #f3fcfc;
 }
 
 #client-dialog {
@@ -709,7 +773,7 @@ menu {
     min-width: 42px;
     height: 42px;
     min-height: 42px;
-    border: 1px solid var(--accent);
+    border: 1px solid var(--cta);
     border-radius: 50%;
     background: #fff;
     line-height: 1;
