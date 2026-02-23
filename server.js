@@ -174,6 +174,25 @@ async function sendNewClientInquiryEmail(payload) {
   await Promise.race([sendPromise, timeoutPromise]);
 }
 
+async function verifySmtpConnection() {
+  if (!smtpConfigured()) {
+    throw new Error("SMTP is not configured.");
+  }
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+  await transporter.verify();
+}
+
 function requireAdminAuth(req, res, next) {
   cleanupAdminSessions();
   const token = String(req.headers["x-admin-token"] || "");
@@ -304,6 +323,15 @@ app.get("/api/diagnostics/smtp", (req, res) => {
       INQUIRY_TO_EMAIL: !!INQUIRY_TO_EMAIL,
     },
   });
+});
+
+app.get("/api/diagnostics/smtp-test", async (req, res) => {
+  try {
+    await verifySmtpConnection();
+    res.json({ ok: true, message: "SMTP connection and authentication succeeded." });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || "SMTP test failed." });
+  }
 });
 
 app.post("/api/admin/login", (req, res) => {
