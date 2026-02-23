@@ -105,6 +105,13 @@ function getPersistedStateShape(state) {
   };
 }
 
+function scoreClientForPortal(state, clientId) {
+  const packageCount = state.packages.filter((item) => item.clientId === clientId).length;
+  const homeworkCount = state.homework.filter((item) => item.clientId === clientId).length;
+  const visitCount = Array.isArray(state.visits) ? state.visits.filter((item) => item.clientId === clientId).length : 0;
+  return packageCount * 100 + homeworkCount * 10 + visitCount;
+}
+
 function computePackageExpiresAt(pkg, settings) {
   if (!pkg || pkg.neverExpires) return null;
   if (!pkg.purchaseDate) return pkg.expiresAt || null;
@@ -453,17 +460,25 @@ app.post("/api/client-portal/login", async (req, res) => {
     }
 
     const state = getPersistedStateShape(await readAppState());
-    const client = state.clients.find((c) => String(c.email || "").trim().toLowerCase() === normalizedEmail);
-    if (!client) {
+    const emailMatches = state.clients.filter((c) => String(c.email || "").trim().toLowerCase() === normalizedEmail);
+    if (emailMatches.length === 0) {
       res.status(401).json({ error: "Login not found. Please check your details." });
       return;
     }
 
-    const clientPhone = normalizePhoneDigits(client.phone || "");
-    if (!clientPhone || clientPhone.slice(-4) !== normalizedLast4) {
+    const phoneMatches = emailMatches.filter((client) => {
+      const clientPhone = normalizePhoneDigits(client.phone || "");
+      return clientPhone && clientPhone.slice(-4) === normalizedLast4;
+    });
+
+    if (phoneMatches.length === 0) {
       res.status(401).json({ error: "Login not found. Please check your details." });
       return;
     }
+
+    const client = phoneMatches
+      .slice()
+      .sort((a, b) => scoreClientForPortal(state, b.id) - scoreClientForPortal(state, a.id))[0];
 
     cleanupClientPortalSessions();
     const token = crypto.randomBytes(24).toString("hex");

@@ -225,6 +225,18 @@ select:focus {
   gap: 0.55rem;
 }
 
+.portal-footer {
+  margin: 0.9rem 0 0;
+  padding: 1.2rem 0 1.6rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.portal-footer p {
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .portal-auth-layout {
     grid-template-columns: 1fr;
