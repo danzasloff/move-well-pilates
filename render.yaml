@@ -13,6 +13,8 @@ services:
         value: move-well-default
       - key: ADMIN_USERS_JSON
         sync: false
+      - key: INQUIRY_WEBHOOK_URL
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

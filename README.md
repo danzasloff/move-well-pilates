@@ -63,6 +63,9 @@ The callback in Square must match `SQUARE_REDIRECT_URI` exactly.
    - `http://localhost:8787`
 
 ## SMTP for New Client Inquiry (Client Portal)
+Preferred on Render Free: set `INQUIRY_WEBHOOK_URL` (Zapier Catch Hook URL). The app will send inquiries to webhook first.
+
+SMTP fallback (used only when webhook URL is not set):
 To send new client inquiry submissions by email (instead of opening a mail app), set:
 - `SMTP_HOST`
 - `SMTP_PORT` (usually `587`)

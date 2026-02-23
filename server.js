@@ -69,6 +69,7 @@ const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "";
 const INQUIRY_TO_EMAIL = process.env.INQUIRY_TO_EMAIL || "shane@movewellseattle.com";
+const INQUIRY_WEBHOOK_URL = process.env.INQUIRY_WEBHOOK_URL || "";
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(__dirname));
@@ -132,46 +133,86 @@ function smtpConfigured() {
   return !!(nodemailer && SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS && SMTP_FROM && INQUIRY_TO_EMAIL);
 }
 
-async function sendNewClientInquiryEmail(payload) {
-  if (!smtpConfigured()) {
-    throw new Error("SMTP is not configured.");
+function webhookConfigured() {
+  return /^https?:\/\//i.test(INQUIRY_WEBHOOK_URL);
+}
+
+async function sendNewClientInquiryWebhook(payload) {
+  if (!webhookConfigured()) {
+    throw new Error("Inquiry webhook is not configured.");
   }
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 20000,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-  });
 
-  const lines = [
-    "New Client Request",
-    "",
-    `Name: ${payload.name}`,
-    `Email: ${payload.email}`,
-    `Phone: ${payload.phone}`,
-    `How did you hear about Move Well?: ${payload.referral}`,
-    `What would you like help with?: ${payload.helpWith}`,
-    "",
-    `Submitted at: ${new Date().toLocaleString()}`,
-  ];
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(INQUIRY_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        source: "move-well-client-portal",
+        submittedAt: new Date().toISOString(),
+        inquiry: payload,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Webhook request failed (${res.status}).`);
+    }
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error("Inquiry webhook timed out.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
-  const sendPromise = transporter.sendMail({
-    from: SMTP_FROM,
-    to: INQUIRY_TO_EMAIL,
-    subject: "New Client Request",
-    text: lines.join("\n"),
-    replyTo: payload.email,
-  });
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error("SMTP request timed out. Please check SMTP settings and try again.")), 20000);
-  });
-  await Promise.race([sendPromise, timeoutPromise]);
+async function sendNewClientInquiryEmail(payload) {
+  if (webhookConfigured()) {
+    await sendNewClientInquiryWebhook(payload);
+    return;
+  }
+  if (smtpConfigured()) {
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
+    });
+
+    const lines = [
+      "New Client Request",
+      "",
+      `Name: ${payload.name}`,
+      `Email: ${payload.email}`,
+      `Phone: ${payload.phone}`,
+      `How did you hear about Move Well?: ${payload.referral}`,
+      `What would you like help with?: ${payload.helpWith}`,
+      "",
+      `Submitted at: ${new Date().toLocaleString()}`,
+    ];
+
+    const sendPromise = transporter.sendMail({
+      from: SMTP_FROM,
+      to: INQUIRY_TO_EMAIL,
+      subject: "New Client Request",
+      text: lines.join("\n"),
+      replyTo: payload.email,
+    });
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("SMTP request timed out. Please check SMTP settings and try again.")), 20000);
+    });
+    await Promise.race([sendPromise, timeoutPromise]);
+    return;
+  }
+  throw new Error("No inquiry delivery method configured. Set INQUIRY_WEBHOOK_URL (recommended) or SMTP settings.");
 }
 
 async function verifySmtpConnection() {
@@ -306,14 +347,19 @@ app.get("/api/health", async (req, res) => {
     squareConfigured: !!(SQUARE_CLIENT_ID && SQUARE_CLIENT_SECRET),
     adminAuthConfigured: ADMIN_USERS.length > 0,
     smtpConfigured: smtpConfigured(),
+    inquiryWebhookConfigured: webhookConfigured(),
+    inquiryDelivery: webhookConfigured() ? "webhook" : smtpConfigured() ? "smtp" : "none",
     timestamp: new Date().toISOString(),
   });
 });
 
 app.get("/api/diagnostics/smtp", (req, res) => {
   res.json({
+    inquiryDelivery: webhookConfigured() ? "webhook" : smtpConfigured() ? "smtp" : "none",
+    webhookConfigured: webhookConfigured(),
     smtpConfigured: smtpConfigured(),
     checks: {
+      INQUIRY_WEBHOOK_URL: webhookConfigured(),
       nodemailerLoaded: !!nodemailer,
       SMTP_HOST: !!SMTP_HOST,
       SMTP_PORT: !!SMTP_PORT,
