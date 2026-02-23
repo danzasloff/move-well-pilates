@@ -140,6 +140,9 @@ async function sendNewClientInquiryEmail(payload) {
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,
@@ -158,13 +161,17 @@ async function sendNewClientInquiryEmail(payload) {
     `Submitted at: ${new Date().toLocaleString()}`,
   ];
 
-  await transporter.sendMail({
+  const sendPromise = transporter.sendMail({
     from: SMTP_FROM,
     to: INQUIRY_TO_EMAIL,
     subject: "New Client Request",
     text: lines.join("\n"),
     replyTo: payload.email,
   });
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("SMTP request timed out. Please check SMTP settings and try again.")), 20000);
+  });
+  await Promise.race([sendPromise, timeoutPromise]);
 }
 
 function requireAdminAuth(req, res, next) {

@@ -267,12 +267,17 @@ if (
       el.inquiryStatus.textContent = "Sending request...";
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 22000);
+
     fetch("/api/client-portal/new-client-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({ name, email, phone, referral, helpWith }),
     })
       .then(async (res) => {
+        clearTimeout(timeoutId);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not send request.");
         if (el.inquiryStatus) {
@@ -289,10 +294,14 @@ if (
         }, 800);
       })
       .catch((err) => {
+        clearTimeout(timeoutId);
         if (el.inquiryStatus) {
           el.inquiryStatus.hidden = false;
           el.inquiryStatus.classList.add("error");
-          el.inquiryStatus.textContent = err.message || "Could not send request.";
+          el.inquiryStatus.textContent =
+            err.name === "AbortError"
+              ? "Request timed out. Please try again."
+              : err.message || "Could not send request.";
         }
       })
       .finally(() => {
