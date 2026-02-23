@@ -67,8 +67,13 @@ function setLoginError(message) {
 
 function setSignedInState(signedIn) {
   el.loginCard.hidden = signedIn;
-  if (el.inquiryCard) el.inquiryCard.hidden = signedIn;
+  if (el.loginCard) el.loginCard.style.display = signedIn ? "none" : "";
+  if (el.inquiryCard) {
+    el.inquiryCard.hidden = signedIn;
+    el.inquiryCard.style.display = signedIn ? "none" : "";
+  }
   el.portalCard.hidden = !signedIn;
+  if (el.portalCard) el.portalCard.style.display = signedIn ? "" : "none";
 }
 
 function openDialog(dialog) {
