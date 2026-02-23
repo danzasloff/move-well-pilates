@@ -11,6 +11,13 @@ try {
   createClient = null;
 }
 
+let nodemailer = null;
+try {
+  nodemailer = require("nodemailer");
+} catch {
+  nodemailer = null;
+}
+
 const app = express();
 const PORT = Number(process.env.PORT || 8787);
 const APP_STATE_KEY = process.env.APP_STATE_KEY || "move-well-default";
@@ -23,6 +30,7 @@ const SQUARE_CLIENT_ID = process.env.SQUARE_CLIENT_ID || "";
 const SQUARE_CLIENT_SECRET = process.env.SQUARE_CLIENT_SECRET || "";
 const REDIRECT_URI = process.env.SQUARE_REDIRECT_URI || `http://localhost:${PORT}/api/square/oauth/callback`;
 const TOKEN_FILE = path.join(__dirname, "data", "square-token.json");
+const STATE_FILE = path.join(__dirname, "data", "app-state.json");
 const SQUARE_VERSION = process.env.SQUARE_VERSION || "2025-10-16";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -33,6 +41,34 @@ const supabase =
     : null;
 
 const oauthStates = new Set();
+const clientPortalSessions = new Map();
+const CLIENT_PORTAL_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const adminSessions = new Map();
+const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const ADMIN_USERS = (() => {
+  const raw = process.env.ADMIN_USERS_JSON || "";
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => ({
+        email: String(item?.email || "").trim().toLowerCase(),
+        password: String(item?.password || ""),
+      }))
+      .filter((item) => item.email && item.password);
+  } catch {
+    return [];
+  }
+})();
+
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "";
+const INQUIRY_TO_EMAIL = process.env.INQUIRY_TO_EMAIL || "shane@movewellseattle.com";
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(__dirname));
@@ -41,8 +77,115 @@ function hasSupabase() {
   return !!supabase;
 }
 
+function readStateFromFile() {
+  try {
+    if (!fs.existsSync(STATE_FILE)) return null;
+    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeStateToFile(state) {
+  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state || {}, null, 2));
+}
+
+function normalizePhoneDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function getPersistedStateShape(state) {
+  return {
+    clients: Array.isArray(state?.clients) ? state.clients : [],
+    packages: Array.isArray(state?.packages) ? state.packages : [],
+    homework: Array.isArray(state?.homework) ? state.homework : [],
+    settings: state?.settings && typeof state.settings === "object" ? state.settings : {},
+  };
+}
+
+function computePackageExpiresAt(pkg, settings) {
+  if (!pkg || pkg.neverExpires) return null;
+  if (!pkg.purchaseDate) return pkg.expiresAt || null;
+  const validityDays = Number(settings?.validityDays || 0);
+  if (!Number.isFinite(validityDays) || validityDays <= 0) return null;
+  const expiresAt = new Date(pkg.purchaseDate);
+  expiresAt.setDate(expiresAt.getDate() + validityDays);
+  return expiresAt.toISOString().slice(0, 10);
+}
+
+function cleanupClientPortalSessions() {
+  const now = Date.now();
+  for (const [token, value] of clientPortalSessions.entries()) {
+    if (!value || value.expiresAt <= now) clientPortalSessions.delete(token);
+  }
+}
+
+function cleanupAdminSessions() {
+  const now = Date.now();
+  for (const [token, value] of adminSessions.entries()) {
+    if (!value || value.expiresAt <= now) adminSessions.delete(token);
+  }
+}
+
+function smtpConfigured() {
+  return !!(nodemailer && SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS && SMTP_FROM && INQUIRY_TO_EMAIL);
+}
+
+async function sendNewClientInquiryEmail(payload) {
+  if (!smtpConfigured()) {
+    throw new Error("SMTP is not configured.");
+  }
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+
+  const lines = [
+    "New Client Request",
+    "",
+    `Name: ${payload.name}`,
+    `Email: ${payload.email}`,
+    `Phone: ${payload.phone}`,
+    `How did you hear about Move Well?: ${payload.referral}`,
+    `What would you like help with?: ${payload.helpWith}`,
+    "",
+    `Submitted at: ${new Date().toLocaleString()}`,
+  ];
+
+  await transporter.sendMail({
+    from: SMTP_FROM,
+    to: INQUIRY_TO_EMAIL,
+    subject: "New Client Request",
+    text: lines.join("\n"),
+    replyTo: payload.email,
+  });
+}
+
+function requireAdminAuth(req, res, next) {
+  cleanupAdminSessions();
+  const token = String(req.headers["x-admin-token"] || "");
+  if (!token) {
+    res.status(401).json({ error: "Authentication required." });
+    return;
+  }
+  const session = adminSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    adminSessions.delete(token);
+    res.status(401).json({ error: "Session expired. Please log in again." });
+    return;
+  }
+  req.adminEmail = session.email;
+  next();
+}
+
 async function readAppState() {
-  if (!hasSupabase()) return null;
+  if (!hasSupabase()) return readStateFromFile();
   const { data, error } = await supabase
     .from("app_states")
     .select("state")
@@ -56,7 +199,10 @@ async function readAppState() {
 }
 
 async function writeAppState(state) {
-  if (!hasSupabase()) return;
+  if (!hasSupabase()) {
+    writeStateToFile(state);
+    return;
+  }
   const { error } = await supabase
     .from("app_states")
     .upsert({ id: APP_STATE_KEY, state, updated_at: new Date().toISOString() }, { onConflict: "id" });
@@ -132,11 +278,50 @@ app.get("/api/health", async (req, res) => {
     ok: true,
     supabase: hasSupabase(),
     squareConfigured: !!(SQUARE_CLIENT_ID && SQUARE_CLIENT_SECRET),
+    adminAuthConfigured: ADMIN_USERS.length > 0,
     timestamp: new Date().toISOString(),
   });
 });
 
-app.get("/api/state", async (req, res) => {
+app.post("/api/admin/login", (req, res) => {
+  const { email, password } = req.body || {};
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const rawPassword = String(password || "");
+
+  if (!normalizedEmail || !rawPassword) {
+    res.status(400).json({ error: "Email and password are required." });
+    return;
+  }
+
+  if (ADMIN_USERS.length === 0) {
+    res.status(500).json({ error: "Admin login is not configured on this server." });
+    return;
+  }
+
+  const user = ADMIN_USERS.find((item) => item.email === normalizedEmail && item.password === rawPassword);
+  if (!user) {
+    res.status(401).json({ error: "Invalid email or password." });
+    return;
+  }
+
+  cleanupAdminSessions();
+  const token = crypto.randomBytes(24).toString("hex");
+  const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  adminSessions.set(token, { email: user.email, expiresAt });
+  res.json({ token, expiresAt: new Date(expiresAt).toISOString(), email: user.email });
+});
+
+app.get("/api/admin/session", requireAdminAuth, (req, res) => {
+  res.json({ ok: true, email: req.adminEmail });
+});
+
+app.post("/api/admin/logout", requireAdminAuth, (req, res) => {
+  const token = String(req.headers["x-admin-token"] || "");
+  adminSessions.delete(token);
+  res.json({ ok: true });
+});
+
+app.get("/api/state", requireAdminAuth, async (req, res) => {
   try {
     const state = await readAppState();
     res.json({ state });
@@ -145,7 +330,7 @@ app.get("/api/state", async (req, res) => {
   }
 });
 
-app.put("/api/state", async (req, res) => {
+app.put("/api/state", requireAdminAuth, async (req, res) => {
   try {
     const { state } = req.body || {};
     if (!state || typeof state !== "object") {
@@ -159,7 +344,138 @@ app.put("/api/state", async (req, res) => {
   }
 });
 
-app.get("/api/square/status", async (req, res) => {
+app.post("/api/client-portal/login", async (req, res) => {
+  try {
+    const { email, phoneLast4 } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedLast4 = normalizePhoneDigits(phoneLast4).slice(-4);
+
+    if (!normalizedEmail || normalizedLast4.length !== 4) {
+      res.status(400).json({ error: "Email and 4-digit phone check are required." });
+      return;
+    }
+
+    const state = getPersistedStateShape(await readAppState());
+    const client = state.clients.find((c) => String(c.email || "").trim().toLowerCase() === normalizedEmail);
+    if (!client) {
+      res.status(401).json({ error: "Login not found. Please check your details." });
+      return;
+    }
+
+    const clientPhone = normalizePhoneDigits(client.phone || "");
+    if (!clientPhone || clientPhone.slice(-4) !== normalizedLast4) {
+      res.status(401).json({ error: "Login not found. Please check your details." });
+      return;
+    }
+
+    cleanupClientPortalSessions();
+    const token = crypto.randomBytes(24).toString("hex");
+    clientPortalSessions.set(token, {
+      clientId: client.id,
+      expiresAt: Date.now() + CLIENT_PORTAL_SESSION_TTL_MS,
+    });
+
+    res.json({ token, expiresAt: new Date(Date.now() + CLIENT_PORTAL_SESSION_TTL_MS).toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to login: ${err.message}` });
+  }
+});
+
+app.get("/api/client-portal/me", async (req, res) => {
+  try {
+    cleanupClientPortalSessions();
+    const token = String(req.query.token || "");
+    if (!token) {
+      res.status(401).json({ error: "Missing session token." });
+      return;
+    }
+
+    const session = clientPortalSessions.get(token);
+    if (!session || session.expiresAt <= Date.now()) {
+      res.status(401).json({ error: "Session expired. Please sign in again." });
+      return;
+    }
+
+    const state = getPersistedStateShape(await readAppState());
+    const client = state.clients.find((c) => c.id === session.clientId);
+    if (!client) {
+      clientPortalSessions.delete(token);
+      res.status(401).json({ error: "Client account unavailable." });
+      return;
+    }
+
+    const packages = state.packages
+      .filter((pkg) => pkg.clientId === client.id)
+      .map((pkg) => {
+        const sessionsTotal = Number(pkg.sessionsTotal || 0);
+        const sessionsUsed = Number(pkg.sessionsUsed || 0);
+        return {
+          id: pkg.id,
+          type: pkg.type,
+          purchaseDate: pkg.purchaseDate,
+          expiresAt: computePackageExpiresAt(pkg, state.settings),
+          sessionsTotal,
+          sessionsUsed,
+          sessionsRemaining: Math.max(0, sessionsTotal - sessionsUsed),
+          neverExpires: !!pkg.neverExpires,
+        };
+      })
+      .sort((a, b) => new Date(b.purchaseDate || 0) - new Date(a.purchaseDate || 0));
+
+    const homework = state.homework
+      .filter((item) => item.clientId === client.id)
+      .map((item) => ({
+        id: item.id,
+        title: item.title || "Homework",
+        notes: item.notes || item.instructorNotes || "",
+        updatedAt: item.updatedAt || item.createdAt || null,
+        done: !!item.done,
+        videos: Array.isArray(item.videos) ? item.videos : [],
+      }))
+      .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+    res.json({
+      client: {
+        id: client.id,
+        name: client.name || "Client",
+        email: client.email || "",
+        phone: client.phone || "",
+      },
+      packages,
+      homework,
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to load portal data: ${err.message}` });
+  }
+});
+
+app.post("/api/client-portal/new-client-request", async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim();
+    const phone = String(req.body?.phone || "").trim();
+    const referral = String(req.body?.referral || "").trim();
+    const helpWith = String(req.body?.helpWith || "").trim();
+
+    if (!name || !email || !phone || !referral || !helpWith) {
+      res.status(400).json({ error: "All fields are required." });
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      res.status(400).json({ error: "Please provide a valid email." });
+      return;
+    }
+
+    await sendNewClientInquiryEmail({ name, email, phone, referral, helpWith });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to send inquiry: ${err.message}` });
+  }
+});
+
+app.get("/api/square/status", requireAdminAuth, async (req, res) => {
   try {
     const token = await readSquareToken();
     res.json({
@@ -172,7 +488,7 @@ app.get("/api/square/status", async (req, res) => {
   }
 });
 
-app.get("/api/square/oauth/start", (req, res) => {
+app.get("/api/square/oauth/start", requireAdminAuth, (req, res) => {
   if (!ensureSquareConfigured(res)) return;
   const state = crypto.randomBytes(16).toString("hex");
   oauthStates.add(state);
@@ -231,7 +547,7 @@ app.get("/api/square/oauth/callback", async (req, res) => {
   }
 });
 
-app.post("/api/square/disconnect", async (req, res) => {
+app.post("/api/square/disconnect", requireAdminAuth, async (req, res) => {
   if (!ensureSquareConfigured(res)) return;
   let token;
   try {
@@ -269,7 +585,7 @@ app.post("/api/square/disconnect", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/square/payments", async (req, res) => {
+app.get("/api/square/payments", requireAdminAuth, async (req, res) => {
   let token;
   try {
     token = await readSquareToken();

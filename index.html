@@ -7,10 +7,29 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <section id="admin-login-view" class="admin-login-view">
+      <div class="admin-login-card">
+        <h2>Admin Login</h2>
+        <p class="hint">Sign in to access the Move Well Pilates admin tracker.</p>
+        <form id="admin-login-form" class="stack">
+          <label>Email
+            <input id="admin-login-email" type="email" required />
+          </label>
+          <label>Password
+            <input id="admin-login-password" type="password" required />
+          </label>
+          <button id="admin-login-submit" class="button primary" type="submit">Log In</button>
+        </form>
+        <p id="admin-login-status" class="hint" hidden></p>
+        <p id="admin-login-error" class="admin-login-error" hidden></p>
+      </div>
+    </section>
+
+    <div id="admin-app-view" hidden>
     <header class="app-header">
       <div class="brand-lockup">
         <h1 class="brand-title">
@@ -23,6 +42,7 @@
         <button id="nav-clients-btn" class="top-nav-link active" type="button">Clients</button>
         <button id="nav-resources-btn" class="top-nav-link" type="button">Resources</button>
         <button id="nav-settings-btn" class="top-nav-link" type="button">Settings</button>
+        <button id="admin-logout-btn" class="top-nav-link" type="button">Log Out</button>
         <button id="new-client-btn" class="button primary">+ New Client</button>
       </div>
     </header>
@@ -190,7 +210,8 @@
     <footer class="app-footer">
       <p>&copy; 2026 Move Well Pilates. App by <a href="/business-dan.html" target="_blank" rel="noopener">Business Dan</a>.</p>
     </footer>
+    </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260223b"></script>
   </body>
 </html>

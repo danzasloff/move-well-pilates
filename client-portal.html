@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Move Well Client Portal</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="client-portal.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="brand-card">
+        <h1><span>Move Well</span> <em>Pilates</em></h1>
+        <p>Client Portal</p>
+      </section>
+
+      <section class="portal-auth-layout">
+        <section id="login-card" class="card">
+          <h2>Client Sign In</h2>
+          <p class="hint">Enter your email and the last 4 digits of your phone number.</p>
+          <form id="login-form" class="stack">
+            <label>Email
+              <input id="login-email" type="email" required />
+            </label>
+            <label>Phone (last 4 digits)
+              <input id="login-last4" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" required />
+            </label>
+            <button class="button primary" type="submit">Sign In</button>
+          </form>
+          <p id="login-error" class="error" hidden></p>
+        </section>
+
+        <section class="card inquiry-card">
+          <h3>New to Move Well Pilates?</h3>
+          <p class="hint">Complete a short form to request an initial session.</p>
+          <button id="new-client-inquiry-btn" class="button" type="button">New Client Inquiry</button>
+        </section>
+      </section>
+
+      <section id="portal-card" class="card" hidden>
+        <div class="portal-head">
+          <div>
+            <h2 id="client-name">Welcome</h2>
+            <p id="client-contact" class="hint"></p>
+          </div>
+          <button id="logout-btn" class="button" type="button">Log Out</button>
+        </div>
+
+        <div class="actions">
+          <a class="button primary" href="https://calendar.app.google/nxjFkS4a1YB5W9UX7" target="_blank" rel="noopener">Book an Appointment</a>
+          <button id="manage-appt-btn" class="button" type="button">Manage Existing Appointment</button>
+          <p id="manage-appt-help" class="hint" hidden>To cancel or reschedule, use the unique manage link in your Google confirmation email for that appointment.</p>
+        </div>
+
+        <section class="section-block">
+          <h3>Packages</h3>
+          <div id="package-list" class="stack"></div>
+        </section>
+
+        <section class="section-block">
+          <h3>Homework</h3>
+          <div id="homework-list" class="stack"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="new-client-request-dialog">
+      <form id="new-client-request-form" class="stack dialog-form">
+        <h3>New Client Request</h3>
+        <label>Name
+          <input id="inq-name" required />
+        </label>
+        <label>Email
+          <input id="inq-email" type="email" required />
+        </label>
+        <label>Phone
+          <input id="inq-phone" required />
+        </label>
+        <label>How did you hear about Move Well?
+          <input id="inq-referral" required />
+        </label>
+        <label>What would you like help with?
+          <textarea id="inq-help" required></textarea>
+        </label>
+        <p id="inq-status" class="hint" hidden></p>
+        <div class="dialog-actions">
+          <button id="new-client-request-cancel" class="button" type="button">Cancel</button>
+          <button class="button primary" type="submit">Send Request</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="client-portal.js"></script>
+  </body>
+</html>

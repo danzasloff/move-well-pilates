@@ -7,7 +7,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Plus+Jakarta+Sans:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       :root {
         --bg: #fdfdfd;
@@ -24,7 +24,7 @@
 
       body {
         margin: 0;
-        font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+        font-family: "DM Sans", "Segoe UI", sans-serif;
         color: var(--ink);
         background: radial-gradient(circle at top left, #fff1e8, var(--bg) 42%);
       }
@@ -373,12 +373,12 @@
         }
 
         ctx.fillStyle = "#e2734a";
-        ctx.font = "500 16px 'Plus Jakarta Sans'";
+        ctx.font = "500 16px 'DM Sans'";
         ctx.fillText("DAN", x - 16, y - 48);
 
         const taskText = TASKS[state.currentTask] || "Legendary Finish";
         ctx.fillStyle = "#6f6761";
-        ctx.font = "500 18px 'Plus Jakarta Sans'";
+        ctx.font = "500 18px 'DM Sans'";
         ctx.fillText("Current Mission: " + taskText, 24, 28);
       }
 

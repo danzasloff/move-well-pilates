@@ -11,6 +11,22 @@ services:
         value: 10000
       - key: APP_STATE_KEY
         value: move-well-default
+      - key: ADMIN_USERS_JSON
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: INQUIRY_TO_EMAIL
+        value: shane@movewellseattle.com
       - key: SQUARE_ENV
         value: sandbox
       - key: SQUARE_VERSION

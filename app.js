@@ -7,6 +7,7 @@ const PACKAGE_TYPES = [
 ];
 
 const STORAGE_KEY = "moveWellClientTrackerV2";
+const ADMIN_TOKEN_KEY = "moveWellAdminToken";
 let cloudSyncEnabled = true;
 let cloudSaveTimer = null;
 const TAB_LABELS = {
@@ -61,6 +62,22 @@ const appState = {
     resourceSelection: [],
   },
 };
+
+function readAdminToken() {
+  return sessionStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+}
+
+function persistAdminToken(token) {
+  sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+  localStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+function clearAdminToken() {
+  sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+let adminToken = readAdminToken();
 
 function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -120,7 +137,7 @@ function scheduleCloudSave() {
     try {
       await fetch("/api/state", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ state: getPersistableState() }),
       });
     } catch {
@@ -139,7 +156,9 @@ function saveState(options = {}) {
 
 async function syncStateFromCloud() {
   try {
-    const res = await fetch("/api/state");
+    const res = await fetch("/api/state", {
+      headers: authHeaders(),
+    });
     if (!res.ok) return;
     const payload = await res.json();
     const state = payload?.state;
@@ -301,12 +320,19 @@ function closeDialog(dialog) {
   dialog.removeAttribute("open");
 }
 
+function authHeaders(extra = {}) {
+  return {
+    ...(adminToken ? { "x-admin-token": adminToken } : {}),
+    ...extra,
+  };
+}
+
 async function apiFetch(path, options = {}) {
   const res = await fetch(path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...authHeaders(options.headers || {}),
     },
   });
   const data = await res.json().catch(() => ({}));
@@ -1964,7 +1990,98 @@ function seedIfEmpty() {
   saveState();
 }
 
-async function init() {
+function setAdminView(isAuthed) {
+  const loginView = document.getElementById("admin-login-view");
+  const appView = document.getElementById("admin-app-view");
+  if (loginView) loginView.hidden = isAuthed;
+  if (appView) appView.hidden = !isAuthed;
+}
+
+function setAdminLoginError(message) {
+  const errorEl = document.getElementById("admin-login-error");
+  if (!errorEl) return;
+  if (!message) {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+    return;
+  }
+  errorEl.hidden = false;
+  errorEl.textContent = message;
+}
+
+function setAdminLoginStatus(message) {
+  const statusEl = document.getElementById("admin-login-status");
+  if (!statusEl) return;
+  if (!message) {
+    statusEl.hidden = true;
+    statusEl.textContent = "";
+    return;
+  }
+  statusEl.hidden = false;
+  statusEl.textContent = message;
+}
+
+function setupAdminLoginForm() {
+  const form = document.getElementById("admin-login-form");
+  const emailInput = document.getElementById("admin-login-email");
+  const passwordInput = document.getElementById("admin-login-password");
+  const submitBtn = document.getElementById("admin-login-submit");
+  const logoutBtn = document.getElementById("admin-logout-btn");
+
+  if (form && emailInput && passwordInput) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setAdminLoginError("");
+      setAdminLoginStatus("Signing in...");
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const data = await apiFetch("/api/admin/login", {
+          method: "POST",
+          body: JSON.stringify({
+            email: (emailInput.value || "").trim(),
+            password: passwordInput.value || "",
+          }),
+        });
+        adminToken = data.token || "";
+        if (!adminToken) throw new Error("Login failed.");
+        persistAdminToken(adminToken);
+        setAdminView(true);
+        setAdminLoginStatus("");
+        await startApp();
+      } catch (err) {
+        adminToken = "";
+        clearAdminToken();
+        setAdminView(false);
+        setAdminLoginStatus("");
+        setAdminLoginError(err.message || "Login failed.");
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await apiFetch("/api/admin/logout", { method: "POST" });
+      } catch {
+        // ignore logout API errors
+      }
+      adminToken = "";
+      clearAdminToken();
+      setAdminView(false);
+      setAdminLoginError("");
+    });
+  }
+}
+
+let appStarted = false;
+async function startApp() {
+  if (appStarted) {
+    render();
+    return;
+  }
+  appStarted = true;
   loadState();
   await syncStateFromCloud();
   seedIfEmpty();
@@ -1984,6 +2101,21 @@ async function init() {
 
   await refreshSquareStatus();
   render();
+}
+
+async function init() {
+  setupAdminLoginForm();
+  const isAuthed = Boolean(adminToken);
+  setAdminView(isAuthed);
+  if (!isAuthed) return;
+  try {
+    await startApp();
+  } catch (err) {
+    adminToken = "";
+    clearAdminToken();
+    setAdminView(false);
+    setAdminLoginError(err?.message || "Could not load app after login. Please try again.");
+  }
 }
 
 init();

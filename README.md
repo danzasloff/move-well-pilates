@@ -54,11 +54,25 @@ The callback in Square must match `SQUARE_REDIRECT_URI` exactly.
 1. Copy env file:
    - `cp .env.example .env`
 2. Fill env values.
+   - Set `ADMIN_USERS_JSON` for admin login, for example:
+     - `[{"email":"shane@example.com","password":"change-me"},{"email":"dan@example.com","password":"change-me"}]`
 3. Install and run:
    - `npm install`
    - `npm start`
 4. Open:
    - `http://localhost:8787`
+
+## SMTP for New Client Inquiry (Client Portal)
+To send new client inquiry submissions by email (instead of opening a mail app), set:
+- `SMTP_HOST`
+- `SMTP_PORT` (usually `587`)
+- `SMTP_SECURE` (`true` for 465, otherwise `false`)
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM` (sender address/name)
+- `INQUIRY_TO_EMAIL` (defaults to `shane@movewellseattle.com`)
+
+After setting these env vars, the Client Portal inquiry form will send directly through the server.
 
 ## 5. Verify Cloud Sync
 After deployment:
