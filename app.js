@@ -30,6 +30,7 @@ const appState = {
   posturalAnalyses: [],
   files: [],
   resources: [],
+  resourceShares: [],
   packages: [],
   homework: [],
   settings: {
@@ -100,6 +101,7 @@ function loadState() {
     if (!Array.isArray(appState.posturalAnalyses)) appState.posturalAnalyses = [];
     if (!Array.isArray(appState.files)) appState.files = [];
     if (!Array.isArray(appState.resources)) appState.resources = [];
+    if (!Array.isArray(appState.resourceShares)) appState.resourceShares = [];
     if (!appState.settings.prices || typeof appState.settings.prices !== "object") {
       appState.settings.prices = {};
     }
@@ -123,6 +125,7 @@ function getPersistableState() {
     posturalAnalyses: appState.posturalAnalyses,
     files: appState.files,
     resources: appState.resources,
+    resourceShares: appState.resourceShares,
     packages: appState.packages,
     homework: appState.homework,
     settings: appState.settings,
@@ -629,6 +632,7 @@ function renderClientForm(client) {
     appState.files = appState.files.filter((f) => f.clientId !== client.id);
     appState.packages = appState.packages.filter((p) => p.clientId !== client.id);
     appState.homework = appState.homework.filter((h) => h.clientId !== client.id);
+    appState.resourceShares = (appState.resourceShares || []).filter((item) => item.clientId !== client.id);
     appState.selectedClientId = appState.clients[0]?.id || null;
     saveState();
     render();
@@ -1418,13 +1422,14 @@ function renderResourcesSection() {
     const deleteCell = createEl("td");
     const deleteBtn = createEl("button", "text-link subdued", "Delete");
     deleteBtn.type = "button";
-    deleteBtn.addEventListener("click", () => {
-      if (!confirm(`Delete resource "${resource.name}"?`)) return;
-      appState.resources = appState.resources.filter((r) => r.id !== resource.id);
-      appState.ui.resourceSelection = (appState.ui.resourceSelection || []).filter((id) => id !== resource.id);
-      saveState();
-      renderResourcesSection();
-    });
+      deleteBtn.addEventListener("click", () => {
+        if (!confirm(`Delete resource "${resource.name}"?`)) return;
+        appState.resources = appState.resources.filter((r) => r.id !== resource.id);
+        appState.resourceShares = (appState.resourceShares || []).filter((item) => item.resourceId !== resource.id);
+        appState.ui.resourceSelection = (appState.ui.resourceSelection || []).filter((id) => id !== resource.id);
+        saveState();
+        renderResourcesSection();
+      });
     deleteCell.appendChild(deleteBtn);
     row.appendChild(deleteCell);
 
@@ -1458,6 +1463,30 @@ function buildResourceShareText(resources) {
     }
   });
   return lines.join("\n");
+}
+
+function assignResourcesToClient(clientId, resources, method) {
+  if (!Array.isArray(appState.resourceShares)) appState.resourceShares = [];
+  const now = new Date().toISOString();
+  resources
+    .filter((resource) => resource && resource.kind === "file")
+    .forEach((resource) => {
+      const existing = appState.resourceShares.find(
+        (item) => item.clientId === clientId && item.resourceId === resource.id
+      );
+      if (existing) {
+        existing.sharedAt = now;
+        existing.method = method;
+        return;
+      }
+      appState.resourceShares.push({
+        id: uid("rshare"),
+        clientId,
+        resourceId: resource.id,
+        method,
+        sharedAt: now,
+      });
+    });
 }
 
 function openSessionNoteEditDialog(sessionId) {
@@ -1936,6 +1965,8 @@ function setupResourceDialogs() {
           alert("This client does not have an email address.");
           return;
         }
+        assignResourcesToClient(client.id, resources, method);
+        saveState();
         const subject = encodeURIComponent(`Resources from Move Well Pilates`);
         const body = encodeURIComponent(shareText);
         window.location.assign(`mailto:${client.email}?subject=${subject}&body=${body}`);
@@ -1944,10 +1975,13 @@ function setupResourceDialogs() {
           alert("This client does not have a phone number.");
           return;
         }
+        assignResourcesToClient(client.id, resources, method);
+        saveState();
         const body = encodeURIComponent(shareText);
         window.location.assign(`sms:${client.phone}?body=${body}`);
       }
       closeDialog(shareDialog);
+      renderResourcesSection();
     });
   }
 }

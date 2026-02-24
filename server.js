@@ -99,6 +99,9 @@ function normalizePhoneDigits(value) {
 function getPersistedStateShape(state) {
   return {
     clients: Array.isArray(state?.clients) ? state.clients : [],
+    visits: Array.isArray(state?.visits) ? state.visits : [],
+    resources: Array.isArray(state?.resources) ? state.resources : [],
+    resourceShares: Array.isArray(state?.resourceShares) ? state.resourceShares : [],
     packages: Array.isArray(state?.packages) ? state.packages : [],
     homework: Array.isArray(state?.homework) ? state.homework : [],
     settings: state?.settings && typeof state.settings === "object" ? state.settings : {},
@@ -546,6 +549,29 @@ app.get("/api/client-portal/me", async (req, res) => {
       }))
       .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
 
+    const resourceFileById = new Map(
+      state.resources
+        .filter((item) => item && item.kind === "file" && item.id)
+        .map((item) => [item.id, item])
+    );
+
+    const resources = state.resourceShares
+      .filter((item) => item && item.clientId === client.id && item.resourceId)
+      .map((item) => {
+        const resource = resourceFileById.get(item.resourceId);
+        if (!resource) return null;
+        return {
+          id: item.id || `${client.id}_${item.resourceId}`,
+          resourceId: resource.id,
+          name: resource.name || "Resource",
+          size: Number(resource.size || 0),
+          dateAdded: item.sharedAt || resource.uploadedAt || null,
+          dataUrl: resource.dataUrl || "",
+        };
+      })
+      .filter((item) => item && item.dataUrl)
+      .sort((a, b) => new Date(b.dateAdded || 0) - new Date(a.dateAdded || 0));
+
     res.json({
       client: {
         id: client.id,
@@ -555,6 +581,7 @@ app.get("/api/client-portal/me", async (req, res) => {
       },
       packages,
       homework,
+      resources,
     });
   } catch (err) {
     res.status(500).json({ error: `Failed to load portal data: ${err.message}` });

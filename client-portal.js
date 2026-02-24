@@ -12,6 +12,7 @@ const el = {
   clientContact: document.getElementById("client-contact"),
   packageList: document.getElementById("package-list"),
   homeworkList: document.getElementById("homework-list"),
+  resourceList: document.getElementById("resource-list"),
   logoutBtn: document.getElementById("logout-btn"),
   manageApptBtn: document.getElementById("manage-appt-btn"),
   manageApptHelp: document.getElementById("manage-appt-help"),
@@ -160,6 +161,51 @@ function renderHomework(homework) {
   });
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function renderResources(resources) {
+  el.resourceList.innerHTML = "";
+  if (!Array.isArray(resources) || resources.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "No resources shared yet.";
+    el.resourceList.appendChild(empty);
+    return;
+  }
+
+  resources.forEach((resource) => {
+    const card = document.createElement("article");
+    card.className = "item";
+
+    const title = document.createElement("strong");
+    title.textContent = resource.name || "Resource";
+
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    const details = [formatBytes(resource.size), `Added ${formatDate(resource.dateAdded)}`].filter(Boolean);
+    meta.textContent = details.join(" | ");
+
+    const download = document.createElement("a");
+    download.className = "button";
+    download.href = resource.dataUrl;
+    download.download = resource.name || "resource";
+    download.textContent = "Download";
+
+    card.append(title, meta, download);
+    el.resourceList.appendChild(card);
+  });
+}
+
 async function loadPortalData(token) {
   const res = await fetch(`/api/client-portal/me?token=${encodeURIComponent(token)}`);
   const data = await res.json().catch(() => ({}));
@@ -185,6 +231,7 @@ function hydratePortal(data) {
   el.clientContact.textContent = [client.email, client.phone].filter(Boolean).join(" | ");
   renderPackages(data.packages || []);
   renderHomework(data.homework || []);
+  renderResources(data.resources || []);
   setSignedInState(true);
 }
 
