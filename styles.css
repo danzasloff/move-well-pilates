@@ -1,5 +1,5 @@
 :root {
-  --bg: #f7f7f8;
+  --bg: #ececef;
   --panel: #ffffff;
   --ink: #1f1f23;
   --muted: #6b6b73;
@@ -10,6 +10,7 @@
   --cta-soft: #8bd6d6;
   --warn: #b25f30;
   --focus-ring: rgba(13, 201, 201, 0.25);
+  --heading-font: "Cormorant Garamond", Georgia, serif;
 }
 
 * {
@@ -19,7 +20,7 @@
 body {
   margin: 0;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top left, #f1fbfb, var(--bg) 44%);
+  background: radial-gradient(circle at top left, #dceeee, var(--bg) 46%);
   color: var(--ink);
 }
 
@@ -70,9 +71,18 @@ body {
 h1,
 h2,
 h3 {
-  font-family: "DM Sans", "Segoe UI", sans-serif;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  font-family: var(--heading-font);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  line-height: 1.12;
+}
+
+h2 {
+  font-size: 2rem;
+}
+
+h3 {
+  font-size: 1.5rem;
 }
 
 .app-header {
@@ -244,7 +254,7 @@ main {
 
 .panel-title-row h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 2rem;
 }
 
 .tab-row {
@@ -291,6 +301,8 @@ main {
 .mobile-active-tab-label {
   font-weight: 500;
   color: var(--ink);
+  font-size: 1.35rem;
+  font-family: var(--heading-font);
 }
 
 .tab-menu-btn {
@@ -522,6 +534,21 @@ textarea {
   color: inherit;
 }
 
+.icon-only {
+  padding: 0;
+  min-width: 0;
+}
+
+.package-delete-btn {
+  margin-left: auto;
+  color: #9a9a9a;
+}
+
+.package-delete-btn .text-link-icon-svg {
+  width: 13px;
+  height: 13px;
+}
+
 .full {
   grid-column: 1 / -1;
 }
@@ -628,6 +655,13 @@ textarea {
 
 .table-link:hover {
   text-decoration: underline;
+}
+
+.session-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
 }
 
 .homework-video {
@@ -834,7 +868,7 @@ menu {
   }
 
   .panel-title-row h2 {
-    font-size: 1.05rem;
+    font-size: 1.55rem;
   }
 
   .mobile-tab-header {

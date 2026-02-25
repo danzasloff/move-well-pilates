@@ -79,6 +79,8 @@ function clearAdminToken() {
 }
 
 let adminToken = readAdminToken();
+let pendingSessionUsePackageId = null;
+let pendingSessionDateEdit = null;
 
 function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -286,10 +288,38 @@ function getPackageExpiresAt(pkg) {
   return expiresAt.toISOString().slice(0, 10);
 }
 
+function toLocalNoonISOString(dateValue) {
+  const raw = String(dateValue || "").trim();
+  if (!raw) return new Date().toISOString();
+  const parts = raw.split("-").map((value) => Number(value));
+  if (parts.length !== 3) return new Date().toISOString();
+  const [year, month, day] = parts;
+  const dt = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    dt.getFullYear() !== year ||
+    dt.getMonth() !== month - 1 ||
+    dt.getDate() !== day
+  ) {
+    return new Date().toISOString();
+  }
+  return dt.toISOString();
+}
+
 function packageSummary(clientId) {
+  const indexById = new Map(
+    appState.packages.map((pkg, idx) => [pkg.id, idx])
+  );
   const list = appState.packages
     .filter((p) => p.clientId === clientId)
-    .sort((a, b) => new Date(b.purchaseDate) - new Date(a.purchaseDate));
+    .sort((a, b) => {
+      const purchaseDiff = new Date(b.purchaseDate || 0) - new Date(a.purchaseDate || 0);
+      if (purchaseDiff !== 0) return purchaseDiff;
+
+      const createdDiff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      if (createdDiff !== 0) return createdDiff;
+
+      return (indexById.get(b.id) || 0) - (indexById.get(a.id) || 0);
+    });
 
   const active = list.find((p) => {
     const expiresAt = getPackageExpiresAt(p);
@@ -463,6 +493,7 @@ function createPackageRecord(clientId, type, purchaseDate, squarePaymentId, squa
   appState.packages.push({
     id: uid("pkg"),
     clientId,
+    createdAt: new Date().toISOString(),
     type,
     sessionsTotal: cfg.sessions,
     sessionsUsed: 0,
@@ -492,10 +523,28 @@ function openSessionHistoryDialog(pkg) {
   } else {
     const list = createEl("ol");
     useDates
-      .slice()
-      .sort((a, b) => new Date(b) - new Date(a))
-      .forEach((date) => {
-        const item = createEl("li", "", new Date(date).toLocaleString());
+      .map((date, index) => ({ date, index }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .forEach((entry) => {
+        const item = createEl("li", "session-history-item");
+        const dateText = createEl("span", "", new Date(entry.date).toLocaleDateString());
+        const editBtn = createEl("button", "text-link", "Edit");
+        editBtn.type = "button";
+        editBtn.addEventListener("click", () => {
+          const dialog = document.getElementById("session-use-date-dialog");
+          const input = document.getElementById("session-use-date-input");
+          const title = document.getElementById("session-use-date-title");
+          const submitBtn = document.getElementById("session-use-date-submit-btn");
+          if (!dialog || !input || !title || !submitBtn) return;
+          pendingSessionDateEdit = { packageId: pkg.id, useIndex: entry.index };
+          pendingSessionUsePackageId = null;
+          input.value = String(entry.date || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+          title.textContent = "Edit Session Date";
+          submitBtn.textContent = "Save Date";
+          closeDialog(document.getElementById("session-history-dialog"));
+          openDialog(dialog);
+        });
+        item.append(dateText, editBtn);
         list.appendChild(item);
       });
     content.appendChild(list);
@@ -966,11 +1015,17 @@ function renderPackageSection(client) {
     useBtn.type = "button";
     useBtn.disabled = remaining <= 0;
     useBtn.addEventListener("click", () => {
-      pkg.sessionsUsed = Math.min(pkg.sessionsTotal, pkg.sessionsUsed + 1);
-      if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
-      pkg.sessionUseDates.push(new Date().toISOString());
-      saveState();
-      render();
+      const dialog = document.getElementById("session-use-date-dialog");
+      const input = document.getElementById("session-use-date-input");
+      const title = document.getElementById("session-use-date-title");
+      const submitBtn = document.getElementById("session-use-date-submit-btn");
+      if (!dialog || !input || !title || !submitBtn) return;
+      pendingSessionUsePackageId = pkg.id;
+      pendingSessionDateEdit = null;
+      input.value = new Date().toISOString().slice(0, 10);
+      title.textContent = "Use 1 Session";
+      submitBtn.textContent = "Use Session";
+      openDialog(dialog);
     });
 
     const unuseBtn = createEl("button", "button", "Undo Session");
@@ -989,8 +1044,10 @@ function renderPackageSection(client) {
     historyBtn.type = "button";
     historyBtn.addEventListener("click", () => openSessionHistoryDialog(pkg));
 
-    const deletePkgBtn = createEl("button", "button", "Delete Package");
+    const deletePkgBtn = createEl("button", "text-link subdued icon-link icon-only package-delete-btn");
     deletePkgBtn.type = "button";
+    deletePkgBtn.setAttribute("aria-label", "Delete package");
+    deletePkgBtn.appendChild(createTrashIcon());
     deletePkgBtn.addEventListener("click", () => {
       const label = PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || "package";
       const ok = confirm(`Delete this ${label} purchase from ${formatDate(pkg.purchaseDate)}?`);
@@ -2011,6 +2068,70 @@ function setupSessionNoteDialog() {
   });
 }
 
+function setupSessionUseDateDialog() {
+  const dialog = document.getElementById("session-use-date-dialog");
+  const form = document.getElementById("session-use-date-form");
+  const input = document.getElementById("session-use-date-input");
+  const cancelBtn = document.getElementById("session-use-date-cancel-btn");
+  const title = document.getElementById("session-use-date-title");
+  const submitBtn = document.getElementById("session-use-date-submit-btn");
+  if (!dialog || !form || !input || !cancelBtn || !title || !submitBtn) return;
+
+  cancelBtn.addEventListener("click", () => {
+    pendingSessionUsePackageId = null;
+    pendingSessionDateEdit = null;
+    title.textContent = "Use 1 Session";
+    submitBtn.textContent = "Use Session";
+    closeDialog(dialog);
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!pendingSessionUsePackageId && !pendingSessionDateEdit) {
+      closeDialog(dialog);
+      return;
+    }
+
+    if (pendingSessionDateEdit) {
+      const editRef = pendingSessionDateEdit;
+      const pkg = appState.packages.find((item) => item.id === editRef.packageId);
+      pendingSessionDateEdit = null;
+      pendingSessionUsePackageId = null;
+      if (!pkg) {
+        closeDialog(dialog);
+        return;
+      }
+      if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+      if (editRef.useIndex >= 0 && editRef.useIndex < pkg.sessionUseDates.length) {
+        pkg.sessionUseDates[editRef.useIndex] = toLocalNoonISOString(input.value);
+      }
+      saveState();
+      title.textContent = "Use 1 Session";
+      submitBtn.textContent = "Use Session";
+      closeDialog(dialog);
+      render();
+      openSessionHistoryDialog(pkg);
+      return;
+    }
+
+    const pkg = appState.packages.find((item) => item.id === pendingSessionUsePackageId);
+    pendingSessionUsePackageId = null;
+    if (!pkg) {
+      closeDialog(dialog);
+      return;
+    }
+
+    pkg.sessionsUsed = Math.min(pkg.sessionsTotal, Number(pkg.sessionsUsed || 0) + 1);
+    if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+    pkg.sessionUseDates.push(toLocalNoonISOString(input.value));
+    saveState();
+    title.textContent = "Use 1 Session";
+    submitBtn.textContent = "Use Session";
+    closeDialog(dialog);
+    render();
+  });
+}
+
 function setupSquareImportButton() {
   const btn = document.getElementById("square-import-btn");
   const statusEl = document.getElementById("square-import-status");
@@ -2153,6 +2274,7 @@ async function startApp() {
   setupNewClientDialog();
   setupResourceDialogs();
   setupSessionNoteDialog();
+  setupSessionUseDateDialog();
   setupSquareImportButton();
   document.getElementById("client-search").addEventListener("input", renderClientList);
 
