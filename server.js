@@ -640,7 +640,7 @@ app.get("/api/square/oauth/start", requireAdminAuth, (req, res) => {
   const params = new URLSearchParams({
     client_id: SQUARE_CLIENT_ID,
     response_type: "code",
-    scope: "PAYMENTS_READ",
+    scope: "PAYMENTS_READ CUSTOMERS_READ",
     state,
     session: "false",
     redirect_uri: REDIRECT_URI,
