@@ -44,6 +44,7 @@ const appState = {
       semiSingle: 75,
       semiTen: 680,
     },
+    squareIgnoredPaymentIds: [],
   },
   selectedClientId: null,
   square: {
@@ -115,9 +116,17 @@ function loadState() {
     if (typeof appState.settings.neverExpiresDefault !== "boolean") {
       appState.settings.neverExpiresDefault = false;
     }
+    if (!Array.isArray(appState.settings.squareIgnoredPaymentIds)) {
+      appState.settings.squareIgnoredPaymentIds = [];
+    }
   } catch (err) {
     console.error("Failed to parse saved state", err);
   }
+}
+
+function isIgnoredSquarePayment(paymentId) {
+  if (!paymentId) return false;
+  return appState.settings.squareIgnoredPaymentIds.includes(paymentId);
 }
 
 function getPersistableState() {
@@ -323,9 +332,25 @@ function packageSummary(clientId) {
 
   const active = list.find((p) => {
     const expiresAt = getPackageExpiresAt(p);
-    return p.sessionsUsed < p.sessionsTotal && (!expiresAt || daysUntil(expiresAt) >= 0);
+    return getPackageSessionsUsed(p) < p.sessionsTotal && (!expiresAt || daysUntil(expiresAt) >= 0);
   });
   return { list, active };
+}
+
+function getPackageSessionsUsed(pkg) {
+  const total = Number(pkg?.sessionsTotal || 0);
+  const fromDates = Array.isArray(pkg?.sessionUseDates) ? pkg.sessionUseDates.length : 0;
+  const fromFieldRaw = Number(pkg?.sessionsUsed || 0);
+  const fromField = Number.isFinite(fromFieldRaw) ? fromFieldRaw : 0;
+  const boundedField = Math.max(0, Math.min(total, fromField));
+  const boundedDates = Math.max(0, Math.min(total, fromDates));
+  return Math.max(boundedField, boundedDates);
+}
+
+function syncPackageUsage(pkg) {
+  if (!pkg) return;
+  if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+  pkg.sessionsUsed = getPackageSessionsUsed(pkg);
 }
 
 function createEl(tag, className, text) {
@@ -525,9 +550,9 @@ function openSessionHistoryDialog(pkg) {
     useDates
       .map((date, index) => ({ date, index }))
       .sort((a, b) => new Date(a.date) - new Date(b.date))
-      .forEach((entry) => {
+      .forEach((entry, displayIndex) => {
         const item = createEl("li", "session-history-item");
-        const dateText = createEl("span", "", new Date(entry.date).toLocaleDateString());
+        const dateText = createEl("span", "", `${displayIndex + 1}. ${new Date(entry.date).toLocaleDateString()}`);
         const editBtn = createEl("button", "text-link", "Edit");
         editBtn.type = "button";
         editBtn.addEventListener("click", () => {
@@ -609,7 +634,7 @@ function renderAlerts(client) {
   if (!active) {
     alerts.appendChild(createEl("div", "alert", "No active package. Add a package purchase."));
   } else {
-    const remaining = active.sessionsTotal - active.sessionsUsed;
+    const remaining = active.sessionsTotal - getPackageSessionsUsed(active);
     if (remaining <= 1) {
       alerts.appendChild(createEl("div", "alert", `Only ${remaining} session left in active package.`));
     }
@@ -867,13 +892,20 @@ function renderSquarePaymentList(client) {
   container.innerHTML = "";
 
   const email = (client?.email || "").toLowerCase();
+  if (!email) {
+    container.appendChild(createEl("p", "muted", "Add a client email to match and import Square payments."));
+    return;
+  }
+
   const payments = appState.square.recentPayments.filter((payment) => {
-    if (!email) return true;
-    const buyer = (payment.buyer_email_address || "").toLowerCase();
-    return !buyer || buyer === email;
+    if (isIgnoredSquarePayment(payment.id)) return false;
+    const buyer = String(payment.buyer_email_address || "").toLowerCase();
+    const receipt = String(payment.receipt_email_address || "").toLowerCase();
+    return buyer === email || receipt === email;
   });
 
   if (payments.length === 0) {
+    container.appendChild(createEl("p", "muted", "No recent Square payments found for this client email."));
     return;
   }
 
@@ -885,11 +917,27 @@ function renderSquarePaymentList(client) {
     const detected = detectPackageTypeFromPayment(payment);
 
     const card = createEl("article", "card");
+    const header = createEl("div", "square-payment-card-header");
     const title = createEl(
       "strong",
       "",
       `${formatMoney(amount)} | ${formatDate(payment.created_at)}${payment.buyer_email_address ? ` | ${payment.buyer_email_address}` : ""}`
     );
+    const removeBtn = createEl("button", "text-link icon-link icon-only square-payment-remove");
+    removeBtn.type = "button";
+    removeBtn.title = "Remove payment from import list";
+    removeBtn.setAttribute("aria-label", "Remove payment from import list");
+    removeBtn.appendChild(createTrashIcon());
+    removeBtn.addEventListener("click", () => {
+      if (!confirm("Remove this payment from the import list?")) return;
+      appState.settings.squareIgnoredPaymentIds = Array.from(
+        new Set([...(appState.settings.squareIgnoredPaymentIds || []), payment.id])
+      );
+      appState.square.recentPayments = appState.square.recentPayments.filter((p) => p.id !== payment.id);
+      saveState();
+      renderPackageSection(client);
+    });
+    header.append(title, removeBtn);
     const meta = createEl("p", "meta", `Payment ID: ${payment.id}${payment.note ? ` | ${payment.note}` : ""}`);
     const detectionMeta = createEl(
       "p",
@@ -929,7 +977,7 @@ function renderSquarePaymentList(client) {
 
     const actions = createEl("div", "card-actions");
     actions.append(typeSelect, importBtn);
-    card.append(title, meta, detectionMeta, actions);
+    card.append(header, meta, detectionMeta, actions);
     container.appendChild(card);
   });
 }
@@ -961,7 +1009,7 @@ function renderPackageSection(client) {
   dateLabel.textContent = "Purchase Date";
   const dateInput = createEl("input");
   dateInput.type = "date";
-  dateInput.valueAsDate = new Date();
+  dateInput.value = new Date().toISOString().slice(0, 10);
   dateLabel.appendChild(dateInput);
 
   const squareLabel = createEl("label");
@@ -977,9 +1025,10 @@ function renderPackageSection(client) {
   neverExpiresLabel.appendChild(neverExpiresInput);
 
   const addBtn = createEl("button", "button primary", "Record Package Purchase");
-  addBtn.type = "button";
+  addBtn.type = "submit";
   addBtn.classList.add("full", "fit-content-row-cta");
-  addBtn.addEventListener("click", () => {
+
+  const submitPackagePurchase = () => {
     createPackageRecord(
       client.id,
       typeSelect.value,
@@ -990,14 +1039,21 @@ function renderPackageSection(client) {
     );
     saveState();
     render();
+  };
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitPackagePurchase();
   });
 
   form.append(typeLabel, dateLabel, squareLabel, neverExpiresLabel, addBtn);
 
   const { list } = packageSummary(client.id);
   list.forEach((pkg) => {
+    syncPackageUsage(pkg);
     const expiresAt = getPackageExpiresAt(pkg);
-    const remaining = pkg.sessionsTotal - pkg.sessionsUsed;
+    const used = getPackageSessionsUsed(pkg);
+    const remaining = pkg.sessionsTotal - used;
     const useDates = Array.isArray(pkg.sessionUseDates) ? pkg.sessionUseDates : [];
     const card = createEl("article", "card");
     card.appendChild(createEl("strong", "", `${PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || pkg.type} | ${remaining}/${pkg.sessionsTotal} remaining`));
@@ -1008,7 +1064,7 @@ function renderPackageSection(client) {
         `Purchased ${formatDate(pkg.purchaseDate)} | Expires ${expiresAt ? formatDate(expiresAt) : "Never"} | Total ${formatMoney(pkg.total)}${pkg.squarePaymentId ? ` | Square: ${pkg.squarePaymentId}` : ""}`
       )
     );
-    card.appendChild(createEl("p", "meta", `Sessions marked used: ${useDates.length}`));
+    card.appendChild(createEl("p", "meta", `Sessions marked used: ${used}`));
 
     const actions = createEl("div", "card-actions");
     const useBtn = createEl("button", "button", "Use 1 Session");
@@ -1030,12 +1086,12 @@ function renderPackageSection(client) {
 
     const unuseBtn = createEl("button", "button", "Undo Session");
     unuseBtn.type = "button";
-    unuseBtn.disabled = pkg.sessionsUsed <= 0;
+    unuseBtn.disabled = used <= 0;
     unuseBtn.addEventListener("click", () => {
-      pkg.sessionsUsed = Math.max(0, pkg.sessionsUsed - 1);
       if (Array.isArray(pkg.sessionUseDates) && pkg.sessionUseDates.length > 0) {
         pkg.sessionUseDates.pop();
       }
+      syncPackageUsage(pkg);
       saveState();
       render();
     });
@@ -2121,9 +2177,9 @@ function setupSessionUseDateDialog() {
       return;
     }
 
-    pkg.sessionsUsed = Math.min(pkg.sessionsTotal, Number(pkg.sessionsUsed || 0) + 1);
     if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
     pkg.sessionUseDates.push(toLocalNoonISOString(input.value));
+    syncPackageUsage(pkg);
     saveState();
     title.textContent = "Use 1 Session";
     submitBtn.textContent = "Use Session";
@@ -2145,7 +2201,7 @@ function setupSquareImportButton() {
     try {
       statusEl.textContent = "Fetching latest payments...";
       const data = await apiFetch("/api/square/payments?limit=25");
-      appState.square.recentPayments = data.payments || [];
+      appState.square.recentPayments = (data.payments || []).filter((payment) => !isIgnoredSquarePayment(payment.id));
       statusEl.textContent = `Loaded ${appState.square.recentPayments.length} payment(s).`;
       renderPackageSection(selectedClient());
     } catch (err) {

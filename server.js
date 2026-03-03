@@ -526,6 +526,7 @@ app.get("/api/client-portal/me", async (req, res) => {
         const sessionsUsed = Number(pkg.sessionsUsed || 0);
         return {
           id: pkg.id,
+          createdAt: pkg.createdAt || null,
           type: pkg.type,
           purchaseDate: pkg.purchaseDate,
           expiresAt: computePackageExpiresAt(pkg, state.settings),
@@ -535,7 +536,11 @@ app.get("/api/client-portal/me", async (req, res) => {
           neverExpires: !!pkg.neverExpires,
         };
       })
-      .sort((a, b) => new Date(b.purchaseDate || 0) - new Date(a.purchaseDate || 0));
+      .sort((a, b) => {
+        const purchaseDiff = new Date(b.purchaseDate || 0) - new Date(a.purchaseDate || 0);
+        if (purchaseDiff !== 0) return purchaseDiff;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
 
     const homework = state.homework
       .filter((item) => item.clientId === client.id)
