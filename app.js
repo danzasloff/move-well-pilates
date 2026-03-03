@@ -105,20 +105,7 @@ function loadState() {
     if (!Array.isArray(appState.files)) appState.files = [];
     if (!Array.isArray(appState.resources)) appState.resources = [];
     if (!Array.isArray(appState.resourceShares)) appState.resourceShares = [];
-    if (!appState.settings.prices || typeof appState.settings.prices !== "object") {
-      appState.settings.prices = {};
-    }
-    if (!Number.isFinite(appState.settings.prices.single)) appState.settings.prices.single = 115;
-    if (!Number.isFinite(appState.settings.prices.five)) appState.settings.prices.five = 500;
-    if (!Number.isFinite(appState.settings.prices.ten)) appState.settings.prices.ten = 950;
-    if (!Number.isFinite(appState.settings.prices.semiSingle)) appState.settings.prices.semiSingle = 75;
-    if (!Number.isFinite(appState.settings.prices.semiTen)) appState.settings.prices.semiTen = 680;
-    if (typeof appState.settings.neverExpiresDefault !== "boolean") {
-      appState.settings.neverExpiresDefault = false;
-    }
-    if (!Array.isArray(appState.settings.squareIgnoredPaymentIds)) {
-      appState.settings.squareIgnoredPaymentIds = [];
-    }
+    normalizeSettingsState();
   } catch (err) {
     console.error("Failed to parse saved state", err);
   }
@@ -126,7 +113,30 @@ function loadState() {
 
 function isIgnoredSquarePayment(paymentId) {
   if (!paymentId) return false;
-  return appState.settings.squareIgnoredPaymentIds.includes(paymentId);
+  const ignored = Array.isArray(appState.settings?.squareIgnoredPaymentIds)
+    ? appState.settings.squareIgnoredPaymentIds
+    : [];
+  return ignored.includes(paymentId);
+}
+
+function normalizeSettingsState() {
+  if (!appState.settings || typeof appState.settings !== "object") {
+    appState.settings = {};
+  }
+  if (!appState.settings.prices || typeof appState.settings.prices !== "object") {
+    appState.settings.prices = {};
+  }
+  if (!Number.isFinite(appState.settings.prices.single)) appState.settings.prices.single = 115;
+  if (!Number.isFinite(appState.settings.prices.five)) appState.settings.prices.five = 500;
+  if (!Number.isFinite(appState.settings.prices.ten)) appState.settings.prices.ten = 950;
+  if (!Number.isFinite(appState.settings.prices.semiSingle)) appState.settings.prices.semiSingle = 75;
+  if (!Number.isFinite(appState.settings.prices.semiTen)) appState.settings.prices.semiTen = 680;
+  if (typeof appState.settings.neverExpiresDefault !== "boolean") {
+    appState.settings.neverExpiresDefault = false;
+  }
+  if (!Array.isArray(appState.settings.squareIgnoredPaymentIds)) {
+    appState.settings.squareIgnoredPaymentIds = [];
+  }
 }
 
 function getPersistableState() {
@@ -178,6 +188,7 @@ async function syncStateFromCloud() {
     const state = payload?.state;
     if (!state || typeof state !== "object") return;
     Object.assign(appState, state);
+    normalizeSettingsState();
     saveState({ skipCloud: true });
   } catch {
     cloudSyncEnabled = false;
