@@ -769,7 +769,45 @@ app.get("/api/square/payments", requireAdminAuth, async (req, res) => {
     }
 
     const payments = (payload.payments || []).filter((p) => p.status === "COMPLETED");
-    res.json({ payments, cursor: payload.cursor || null });
+    const customerIds = Array.from(
+      new Set(
+        payments
+          .map((payment) => payment.customer_id)
+          .filter(Boolean)
+      )
+    );
+
+    const customerById = new Map();
+    await Promise.all(
+      customerIds.map(async (customerId) => {
+        try {
+          const customerRes = await fetch(`${SQUARE_BASE}/v2/customers/${encodeURIComponent(customerId)}`, {
+            headers: {
+              Authorization: `Bearer ${token.accessToken}`,
+              "Square-Version": SQUARE_VERSION,
+            },
+          });
+          if (!customerRes.ok) return;
+          const customerPayload = await customerRes.json();
+          const customer = customerPayload?.customer;
+          if (!customer) return;
+          customerById.set(customerId, customer);
+        } catch {
+          // Ignore per-customer fetch failures so payment import still works.
+        }
+      })
+    );
+
+    const enrichedPayments = payments.map((payment) => {
+      const customer = payment.customer_id ? customerById.get(payment.customer_id) : null;
+      return {
+        ...payment,
+        customer_email_address: customer?.email_address || "",
+        customer_phone_number: customer?.phone_number || "",
+      };
+    });
+
+    res.json({ payments: enrichedPayments, cursor: payload.cursor || null });
   } catch (err) {
     res.status(500).json({ error: `Square request failed: ${err.message}` });
   }

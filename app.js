@@ -236,6 +236,22 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString();
 }
 
+function normalizeEmailForMatch(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw || !raw.includes("@")) return raw;
+  const [local, domain] = raw.split("@");
+  if (!local || !domain) return raw;
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    const plusTrimmed = local.split("+")[0].replace(/\./g, "");
+    return `${plusTrimmed}@gmail.com`;
+  }
+  return `${local}@${domain}`;
+}
+
+function normalizePhoneDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -902,17 +918,33 @@ function renderSquarePaymentList(client) {
   const container = document.getElementById("square-payment-list");
   container.innerHTML = "";
 
-  const email = (client?.email || "").toLowerCase();
-  if (!email) {
-    container.appendChild(createEl("p", "muted", "Add a client email to match and import Square payments."));
+  const email = normalizeEmailForMatch(client?.email || "");
+  const clientPhoneDigits = normalizePhoneDigits(client?.phone || "");
+  if (!email && !clientPhoneDigits) {
+    container.appendChild(createEl("p", "muted", "Add a client email or phone to match and import Square payments."));
     return;
   }
 
   const payments = appState.square.recentPayments.filter((payment) => {
     if (isIgnoredSquarePayment(payment.id)) return false;
-    const buyer = String(payment.buyer_email_address || "").toLowerCase();
-    const receipt = String(payment.receipt_email_address || "").toLowerCase();
-    return buyer === email || receipt === email;
+    const paymentEmails = [
+      payment.buyer_email_address,
+      payment.receipt_email_address,
+      payment.customer_email_address,
+    ]
+      .map((value) => normalizeEmailForMatch(value))
+      .filter(Boolean);
+    const emailMatch = email && paymentEmails.includes(email);
+
+    const paymentPhones = [
+      payment.buyer_phone_number,
+      payment.customer_phone_number,
+    ]
+      .map((value) => normalizePhoneDigits(value))
+      .filter(Boolean);
+    const phoneMatch = clientPhoneDigits && paymentPhones.includes(clientPhoneDigits);
+
+    return emailMatch || phoneMatch;
   });
 
   if (payments.length === 0) {
@@ -932,7 +964,7 @@ function renderSquarePaymentList(client) {
     const title = createEl(
       "strong",
       "",
-      `${formatMoney(amount)} | ${formatDate(payment.created_at)}${payment.buyer_email_address ? ` | ${payment.buyer_email_address}` : ""}`
+      `${formatMoney(amount)} | ${formatDate(payment.created_at)}${payment.buyer_email_address || payment.customer_email_address ? ` | ${payment.buyer_email_address || payment.customer_email_address}` : ""}`
     );
     const removeBtn = createEl("button", "text-link icon-link icon-only square-payment-remove");
     removeBtn.type = "button";
