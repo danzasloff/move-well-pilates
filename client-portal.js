@@ -1,4 +1,5 @@
 const STORAGE_KEY = "moveWellPortalSession";
+const PACIFIC_TIMEZONE = "America/Los_Angeles";
 
 const el = {
   loginCard: document.getElementById("login-card"),
@@ -30,7 +31,15 @@ const el = {
 
 function formatDate(value) {
   if (!value) return "";
-  return new Date(value).toLocaleDateString();
+  const raw = String(value).trim();
+  const exact = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (exact) {
+    const [, y, m, d] = exact;
+    return `${Number(m)}/${Number(d)}/${y}`;
+  }
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return raw;
+  return new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC_TIMEZONE }).format(dt);
 }
 
 function packageLabel(type) {

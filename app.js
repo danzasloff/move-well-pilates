@@ -8,6 +8,7 @@ const PACKAGE_TYPES = [
 
 const STORAGE_KEY = "moveWellClientTrackerV2";
 const ADMIN_TOKEN_KEY = "moveWellAdminToken";
+const PACIFIC_TIMEZONE = "America/Los_Angeles";
 let cloudSyncEnabled = true;
 let cloudSaveTimer = null;
 const TAB_LABELS = {
@@ -231,9 +232,48 @@ function formatMoney(n) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n || 0);
 }
 
+function toPacificDateInputValue(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: PACIFIC_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function toDateInputValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return toPacificDateInputValue();
+  const exact = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (exact) return exact[0];
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return toPacificDateInputValue(parsed);
+  const prefix = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return prefix ? prefix[1] : toPacificDateInputValue();
+}
+
+function parseDateInputValue(dateStr) {
+  const raw = String(dateStr || "").trim();
+  const parts = raw.split("-").map((value) => Number(value));
+  if (parts.length !== 3) return null;
+  const [year, month, day] = parts;
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  const dt = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day) return null;
+  return dt;
+}
+
 function formatDate(value) {
   if (!value) return "";
-  return new Date(value).toLocaleDateString();
+  const raw = String(value).trim();
+  const exact = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (exact) {
+    const [, y, m, d] = exact;
+    return `${Number(m)}/${Number(d)}/${y}`;
+  }
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return raw;
+  return new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC_TIMEZONE }).format(dt);
 }
 
 function normalizeEmailForMatch(value) {
@@ -307,8 +347,9 @@ function fileToDataUrl(file) {
 
 function daysUntil(dateStr) {
   if (!dateStr) return null;
-  const target = new Date(dateStr);
+  const target = parseDateInputValue(dateStr) || new Date(dateStr);
   const now = new Date();
+  if (Number.isNaN(target.getTime())) return null;
   const ms = target.setHours(0, 0, 0, 0) - now.setHours(0, 0, 0, 0);
   return Math.ceil(ms / 86400000);
 }
@@ -319,9 +360,10 @@ function getPackageExpiresAt(pkg) {
   if (!purchaseDate) return pkg.expiresAt || null;
   const days = Number(appState.settings.validityDays || 0);
   if (!Number.isFinite(days) || days <= 0) return null;
-  const expiresAt = new Date(purchaseDate);
+  const expiresAt = parseDateInputValue(purchaseDate) || new Date(purchaseDate);
+  if (Number.isNaN(expiresAt.getTime())) return null;
   expiresAt.setDate(expiresAt.getDate() + days);
-  return expiresAt.toISOString().slice(0, 10);
+  return toPacificDateInputValue(expiresAt);
 }
 
 function toLocalNoonISOString(dateValue) {
@@ -579,7 +621,7 @@ function openSessionHistoryDialog(pkg) {
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .forEach((entry, displayIndex) => {
         const item = createEl("li", "session-history-item");
-        const dateText = createEl("span", "", `${displayIndex + 1}. ${new Date(entry.date).toLocaleDateString()}`);
+        const dateText = createEl("span", "", `${displayIndex + 1}. ${formatDate(entry.date)}`);
         const editBtn = createEl("button", "text-link", "Edit");
         editBtn.type = "button";
         editBtn.addEventListener("click", () => {
@@ -590,7 +632,7 @@ function openSessionHistoryDialog(pkg) {
           if (!dialog || !input || !title || !submitBtn) return;
           pendingSessionDateEdit = { packageId: pkg.id, useIndex: entry.index };
           pendingSessionUsePackageId = null;
-          input.value = String(entry.date || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+          input.value = toDateInputValue(entry.date);
           title.textContent = "Edit Session Date";
           submitBtn.textContent = "Save Date";
           closeDialog(document.getElementById("session-history-dialog"));
@@ -777,7 +819,7 @@ function renderVisitSection(client) {
   visitDateLabel.textContent = "Date";
   const visitDateInput = createEl("input");
   visitDateInput.type = "date";
-  visitDateInput.valueAsDate = new Date();
+  visitDateInput.value = toPacificDateInputValue();
   visitDateLabel.appendChild(visitDateInput);
 
   const visitNotesLabel = createEl("label", "full");
@@ -792,7 +834,7 @@ function renderVisitSection(client) {
     appState.visits.push({
       id: uid("visit"),
       clientId: client.id,
-      date: visitDateInput.value || new Date().toISOString().slice(0, 10),
+      date: visitDateInput.value || toPacificDateInputValue(),
       notes: visitNotesInput.value,
       createdAt: new Date().toISOString(),
     });
@@ -1009,7 +1051,7 @@ function renderSquarePaymentList(client) {
       createPackageRecord(
         client.id,
         typeSelect.value,
-        (payment.created_at || new Date().toISOString()).slice(0, 10),
+        toDateInputValue(payment.created_at),
         payment.id,
         amount,
         appState.settings.neverExpiresDefault
@@ -1028,13 +1070,10 @@ function renderSquarePaymentList(client) {
 function renderPackageSection(client) {
   const form = document.getElementById("package-form");
   const history = document.getElementById("package-history");
-  const importStatus = document.getElementById("square-import-status");
   form.innerHTML = "";
   history.innerHTML = "";
-  importStatus.textContent = appState.square.statusMessage || "";
 
   if (!client) {
-    document.getElementById("square-payment-list").innerHTML = "";
     return;
   }
 
@@ -1052,13 +1091,8 @@ function renderPackageSection(client) {
   dateLabel.textContent = "Purchase Date";
   const dateInput = createEl("input");
   dateInput.type = "date";
-  dateInput.value = new Date().toISOString().slice(0, 10);
+  dateInput.value = toPacificDateInputValue();
   dateLabel.appendChild(dateInput);
-
-  const squareLabel = createEl("label");
-  squareLabel.textContent = "Square Payment ID (optional)";
-  const squareInput = createEl("input");
-  squareLabel.appendChild(squareInput);
 
   const neverExpiresLabel = createEl("label", "inline-checkbox-row");
   neverExpiresLabel.textContent = "Never Expires";
@@ -1075,8 +1109,8 @@ function renderPackageSection(client) {
     createPackageRecord(
       client.id,
       typeSelect.value,
-      dateInput.value || new Date().toISOString().slice(0, 10),
-      squareInput.value.trim(),
+      dateInput.value || toPacificDateInputValue(),
+      "",
       null,
       neverExpiresInput.checked
     );
@@ -1089,7 +1123,7 @@ function renderPackageSection(client) {
     submitPackagePurchase();
   });
 
-  form.append(typeLabel, dateLabel, squareLabel, neverExpiresLabel, addBtn);
+  form.append(typeLabel, dateLabel, neverExpiresLabel, addBtn);
 
   const { list } = packageSummary(client.id);
   list.forEach((pkg) => {
@@ -1121,7 +1155,7 @@ function renderPackageSection(client) {
       if (!dialog || !input || !title || !submitBtn) return;
       pendingSessionUsePackageId = pkg.id;
       pendingSessionDateEdit = null;
-      input.value = new Date().toISOString().slice(0, 10);
+      input.value = toPacificDateInputValue();
       title.textContent = "Use 1 Session";
       submitBtn.textContent = "Use Session";
       openDialog(dialog);
@@ -1161,7 +1195,6 @@ function renderPackageSection(client) {
     history.appendChild(card);
   });
 
-  renderSquarePaymentList(client);
 }
 
 function renderHomeworkSection(client) {
@@ -2234,6 +2267,7 @@ function setupSessionUseDateDialog() {
 function setupSquareImportButton() {
   const btn = document.getElementById("square-import-btn");
   const statusEl = document.getElementById("square-import-status");
+  if (!btn || !statusEl) return;
 
   btn.addEventListener("click", async () => {
     if (!appState.square.connected) {
