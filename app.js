@@ -233,12 +233,18 @@ function formatMoney(n) {
 }
 
 function toPacificDateInputValue(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: PACIFIC_TIMEZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(date);
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  if (year && month && day) return `${year}-${month}-${day}`;
+  const fallback = new Date(date);
+  return `${fallback.getFullYear()}-${String(fallback.getMonth() + 1).padStart(2, "0")}-${String(fallback.getDate()).padStart(2, "0")}`;
 }
 
 function toDateInputValue(value) {
@@ -1102,10 +1108,11 @@ function renderPackageSection(client) {
   neverExpiresLabel.appendChild(neverExpiresInput);
 
   const addBtn = createEl("button", "button primary", "Record Package Purchase");
-  addBtn.type = "submit";
+  addBtn.type = "button";
   addBtn.classList.add("full", "fit-content-row-cta");
 
   const submitPackagePurchase = () => {
+    addBtn.disabled = true;
     createPackageRecord(
       client.id,
       typeSelect.value,
@@ -1114,14 +1121,19 @@ function renderPackageSection(client) {
       null,
       neverExpiresInput.checked
     );
-    saveState();
     render();
+    setTimeout(() => saveState(), 0);
+    setTimeout(() => {
+      const freshBtn = document.querySelector("#package-form .fit-content-row-cta");
+      if (freshBtn) freshBtn.disabled = false;
+    }, 0);
   };
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     submitPackagePurchase();
   });
+  addBtn.addEventListener("click", submitPackagePurchase);
 
   form.append(typeLabel, dateLabel, neverExpiresLabel, addBtn);
 
@@ -2219,6 +2231,7 @@ function setupSessionUseDateDialog() {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!input.value) input.value = toPacificDateInputValue();
     if (!pendingSessionUsePackageId && !pendingSessionDateEdit) {
       closeDialog(dialog);
       return;

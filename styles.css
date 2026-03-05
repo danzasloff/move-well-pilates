@@ -542,11 +542,20 @@ textarea {
 .package-delete-btn {
   margin-left: auto;
   color: #9a9a9a;
+  min-width: 36px;
+  min-height: 36px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  touch-action: manipulation;
 }
 
 .package-delete-btn .text-link-icon-svg {
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
 }
 
 .square-payment-card-header {
