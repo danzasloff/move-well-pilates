@@ -533,7 +533,14 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
+function cancelPendingCloudSave() {
+  if (!cloudSaveTimer) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = null;
+}
+
 async function refreshStateAndRender() {
+  cancelPendingCloudSave();
   await syncStateFromCloud();
   render();
 }
@@ -939,6 +946,10 @@ function renderVisitSection(client) {
   addVisitBtn.type = "button";
   addVisitBtn.classList.add("full", "fit-content-row-cta");
   addVisitBtn.addEventListener("click", async () => {
+    if (!String(visitNotesInput.value || "").trim()) {
+      alert("Please enter session notes before saving.");
+      return;
+    }
     setButtonLoading(addVisitBtn, true, "Saving...");
     try {
       await apiCreateSessionNote(client.id, {

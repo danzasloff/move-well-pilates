@@ -130,6 +130,30 @@ function normalizeAdminState(state) {
   return base;
 }
 
+function mergeStatePreservingServerAuthoritative(currentRaw, incomingRaw) {
+  const current = normalizeAdminState(currentRaw);
+  const incoming = normalizeAdminState(incomingRaw);
+  const merged = { ...incoming };
+
+  // Preserve domains now written through dedicated server endpoints.
+  merged.packages = current.packages;
+  merged.visits = current.visits;
+  merged.posturalAnalyses = current.posturalAnalyses;
+
+  // Preserve client postural analysis notes to avoid stale client snapshots wiping them.
+  const currentClientById = new Map(current.clients.map((client) => [client.id, client]));
+  merged.clients = incoming.clients.map((client) => {
+    const existing = currentClientById.get(client.id);
+    if (!existing) return client;
+    return {
+      ...client,
+      posturalAnalysisNotes: existing.posturalAnalysisNotes || client.posturalAnalysisNotes || "",
+    };
+  });
+
+  return merged;
+}
+
 function serverUid(prefix) {
   return `${prefix}_${crypto.randomBytes(4).toString("hex")}`;
 }
@@ -496,7 +520,9 @@ app.put("/api/state", requireAdminAuth, async (req, res) => {
       res.status(400).json({ error: "Body must include an object field named 'state'." });
       return;
     }
-    await writeAppState(state);
+    const current = await readAppState();
+    const merged = mergeStatePreservingServerAuthoritative(current, state);
+    await writeAppState(merged);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: `Failed to write cloud state: ${err.message}` });
