@@ -64,6 +64,11 @@ const appState = {
     topPage: "clients",
     resourceSelection: [],
   },
+  runtime: {
+    version: "",
+    service: "",
+    environment: "",
+  },
 };
 
 function readAdminToken() {
@@ -617,6 +622,19 @@ async function refreshSquareStatus() {
   } catch (err) {
     appState.square.connected = false;
     appState.square.statusMessage = "Square backend unavailable";
+  }
+}
+
+async function refreshRuntimeVersion() {
+  try {
+    const data = await apiFetch("/api/version");
+    appState.runtime.version = data.version || "";
+    appState.runtime.service = data.service || "";
+    appState.runtime.environment = data.environment || "";
+  } catch {
+    appState.runtime.version = "";
+    appState.runtime.service = "";
+    appState.runtime.environment = "";
   }
 }
 
@@ -1995,6 +2013,7 @@ function renderSettingsForm() {
   refreshBtn.type = "button";
   refreshBtn.addEventListener("click", async () => {
     await refreshSquareStatus();
+    await refreshRuntimeVersion();
     renderSettingsForm();
   });
 
@@ -2013,6 +2032,12 @@ function renderSettingsForm() {
 
   actions.append(connectBtn, refreshBtn, disconnectBtn);
   squareCard.append(title, status, actions);
+
+  const versionRow = createEl("p", "meta");
+  const versionText = appState.runtime.version || "unavailable";
+  const envText = appState.runtime.environment ? ` (${appState.runtime.environment})` : "";
+  versionRow.textContent = `App Version: ${versionText}${envText}`;
+  squareCard.appendChild(versionRow);
 
   const makeNumberField = (labelText, value, onChange) => {
     const label = createEl("label");
@@ -2567,6 +2592,7 @@ async function startApp() {
   }
 
   await refreshSquareStatus();
+  await refreshRuntimeVersion();
   render();
 }
 

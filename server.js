@@ -21,6 +21,11 @@ try {
 const app = express();
 const PORT = Number(process.env.PORT || 8787);
 const APP_STATE_KEY = process.env.APP_STATE_KEY || "move-well-default";
+const APP_VERSION =
+  process.env.APP_VERSION ||
+  process.env.RENDER_GIT_COMMIT ||
+  process.env.RENDER_COMMIT ||
+  "dev-local";
 
 const SQUARE_ENV = (process.env.SQUARE_ENV || "sandbox").toLowerCase();
 const SQUARE_BASE =
@@ -435,7 +440,16 @@ app.get("/api/health", async (req, res) => {
     smtpConfigured: smtpConfigured(),
     inquiryWebhookConfigured: webhookConfigured(),
     inquiryDelivery: webhookConfigured() ? "webhook" : smtpConfigured() ? "smtp" : "none",
+    version: APP_VERSION,
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/version", requireAdminAuth, (req, res) => {
+  res.json({
+    version: APP_VERSION,
+    service: process.env.RENDER_SERVICE_NAME || "move-well-pilates",
+    environment: process.env.RENDER ? "render" : "local",
   });
 });
 

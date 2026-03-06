@@ -1058,6 +1058,15 @@ menu {
     flex: 0 1 auto;
   }
 
+  #visit-form .filter-row input[type="date"],
+  #visit-form .filter-row input[type="search"],
+  #visit-form .filter-row button {
+    min-height: 46px;
+    line-height: 1.2;
+    padding-top: 0.62rem;
+    padding-bottom: 0.62rem;
+  }
+
   #visit-form input[type="date"] {
     -webkit-appearance: none;
     appearance: none;
