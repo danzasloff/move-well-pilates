@@ -155,6 +155,12 @@ function getPersistableState() {
   };
 }
 
+function getCloudPersistableState() {
+  const state = getPersistableState();
+  delete state.selectedClientId;
+  return state;
+}
+
 function scheduleCloudSave() {
   if (!cloudSyncEnabled) return;
   if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
@@ -163,7 +169,7 @@ function scheduleCloudSave() {
       await fetch("/api/state", {
         method: "PUT",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ state: getPersistableState() }),
+        body: JSON.stringify({ state: getCloudPersistableState() }),
       });
     } catch {
       // keep local state and retry on future saves
@@ -181,6 +187,7 @@ function saveState(options = {}) {
 
 async function syncStateFromCloud() {
   try {
+    const localSelectedClientId = appState.selectedClientId;
     const res = await fetch("/api/state", {
       headers: authHeaders(),
     });
@@ -189,6 +196,11 @@ async function syncStateFromCloud() {
     const state = payload?.state;
     if (!state || typeof state !== "object") return;
     Object.assign(appState, state);
+    if (localSelectedClientId && appState.clients.some((client) => client.id === localSelectedClientId)) {
+      appState.selectedClientId = localSelectedClientId;
+    } else if (!appState.selectedClientId && appState.clients.length > 0) {
+      appState.selectedClientId = appState.clients[0].id;
+    }
     normalizeSettingsState();
     saveState({ skipCloud: true });
   } catch {
@@ -433,6 +445,25 @@ function createEl(tag, className, text) {
   if (className) el.className = className;
   if (text !== undefined) el.textContent = text;
   return el;
+}
+
+function setButtonLoading(button, isLoading, loadingText = "Saving...") {
+  if (!button) return;
+  if (isLoading) {
+    if (!button.dataset.originalText) {
+      button.dataset.originalText = button.textContent || "";
+    }
+    if (button.dataset.originalText) button.textContent = loadingText;
+    button.disabled = true;
+    button.classList.add("is-loading");
+    return;
+  }
+  if (button.dataset.originalText) {
+    button.textContent = button.dataset.originalText;
+    delete button.dataset.originalText;
+  }
+  button.classList.remove("is-loading");
+  button.disabled = false;
 }
 
 function createTrashIcon() {
@@ -1150,7 +1181,7 @@ function renderPackageSection(client) {
   addBtn.classList.add("full", "fit-content-row-cta");
 
   const submitPackagePurchase = async () => {
-    addBtn.disabled = true;
+    setButtonLoading(addBtn, true, "Saving...");
     try {
       await apiCreatePackagePurchase({
         clientId: client.id,
@@ -1162,7 +1193,7 @@ function renderPackageSection(client) {
     } catch (err) {
       alert(err.message || "Failed to record package purchase.");
     } finally {
-      addBtn.disabled = false;
+      setButtonLoading(addBtn, false);
     }
   };
 
@@ -1216,12 +1247,13 @@ function renderPackageSection(client) {
     unuseBtn.type = "button";
     unuseBtn.disabled = used <= 0;
     unuseBtn.addEventListener("click", async () => {
-      unuseBtn.disabled = true;
+      setButtonLoading(unuseBtn, true, "Undoing...");
       try {
         await apiUndoPackageSession(pkg.id);
         await refreshStateAndRender();
       } catch (err) {
         alert(err.message || "Failed to undo session.");
+        setButtonLoading(unuseBtn, false);
         unuseBtn.disabled = used <= 0;
       }
     });
@@ -1238,13 +1270,13 @@ function renderPackageSection(client) {
       const label = PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || "package";
       const ok = confirm(`Delete this ${label} purchase from ${formatDate(pkg.purchaseDate)}?`);
       if (!ok) return;
-      deletePkgBtn.disabled = true;
+      setButtonLoading(deletePkgBtn, true);
       try {
         await apiDeletePackage(pkg.id);
         await refreshStateAndRender();
       } catch (err) {
         alert(err.message || "Failed to delete package.");
-        deletePkgBtn.disabled = false;
+        setButtonLoading(deletePkgBtn, false);
       }
     });
 
@@ -2282,6 +2314,7 @@ function setupSessionUseDateDialog() {
       closeDialog(dialog);
       return;
     }
+    setButtonLoading(submitBtn, true, "Saving...");
 
     if (pendingSessionDateEdit) {
       const editRef = pendingSessionDateEdit;
@@ -2294,10 +2327,12 @@ function setupSessionUseDateDialog() {
         alert(err.message || "Failed to update session date.");
       }
       title.textContent = "Use 1 Session";
+      delete submitBtn.dataset.originalText;
       submitBtn.textContent = "Use Session";
       closeDialog(dialog);
       const refreshedPkg = appState.packages.find((item) => item.id === editRef.packageId);
       if (refreshedPkg) openSessionHistoryDialog(refreshedPkg);
+      setButtonLoading(submitBtn, false);
       return;
     }
 
@@ -2314,8 +2349,10 @@ function setupSessionUseDateDialog() {
       alert(err.message || "Failed to record used session.");
     }
     title.textContent = "Use 1 Session";
+    delete submitBtn.dataset.originalText;
     submitBtn.textContent = "Use Session";
     closeDialog(dialog);
+    setButtonLoading(submitBtn, false);
   });
 }
 
