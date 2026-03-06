@@ -1034,6 +1034,19 @@ menu {
     overflow-x: hidden;
   }
 
+  #visit-form .filter-row,
+  #visit-form .filter-row > *,
+  #visit-form input[type="date"],
+  #visit-form input[type="search"],
+  #visit-form textarea,
+  #visit-form select,
+  #visit-form label {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-inline-size: 0;
+  }
+
   .resources-table {
     min-width: 700px;
   }
