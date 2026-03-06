@@ -502,6 +502,44 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
+async function refreshStateAndRender() {
+  await syncStateFromCloud();
+  render();
+}
+
+async function apiCreatePackagePurchase(payload) {
+  await apiFetch("/api/packages", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiUsePackageSession(packageId, dateValue) {
+  await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/use-session`, {
+    method: "POST",
+    body: JSON.stringify({ date: dateValue }),
+  });
+}
+
+async function apiEditPackageSessionDate(packageId, useIndex, dateValue) {
+  await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/edit-session-date`, {
+    method: "POST",
+    body: JSON.stringify({ useIndex, date: dateValue }),
+  });
+}
+
+async function apiUndoPackageSession(packageId) {
+  await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/undo-session`, {
+    method: "POST",
+  });
+}
+
+async function apiDeletePackage(packageId) {
+  await apiFetch(`/api/packages/${encodeURIComponent(packageId)}`, {
+    method: "DELETE",
+  });
+}
+
 async function refreshSquareStatus() {
   try {
     const data = await apiFetch("/api/square/status");
@@ -1111,29 +1149,30 @@ function renderPackageSection(client) {
   addBtn.type = "button";
   addBtn.classList.add("full", "fit-content-row-cta");
 
-  const submitPackagePurchase = () => {
+  const submitPackagePurchase = async () => {
     addBtn.disabled = true;
-    createPackageRecord(
-      client.id,
-      typeSelect.value,
-      dateInput.value || toPacificDateInputValue(),
-      "",
-      null,
-      neverExpiresInput.checked
-    );
-    render();
-    setTimeout(() => saveState(), 0);
-    setTimeout(() => {
-      const freshBtn = document.querySelector("#package-form .fit-content-row-cta");
-      if (freshBtn) freshBtn.disabled = false;
-    }, 0);
+    try {
+      await apiCreatePackagePurchase({
+        clientId: client.id,
+        type: typeSelect.value,
+        purchaseDate: dateInput.value || toPacificDateInputValue(),
+        neverExpires: neverExpiresInput.checked,
+      });
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to record package purchase.");
+    } finally {
+      addBtn.disabled = false;
+    }
   };
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    submitPackagePurchase();
+    await submitPackagePurchase();
   });
-  addBtn.addEventListener("click", submitPackagePurchase);
+  addBtn.addEventListener("click", async () => {
+    await submitPackagePurchase();
+  });
 
   form.append(typeLabel, dateLabel, neverExpiresLabel, addBtn);
 
@@ -1176,13 +1215,15 @@ function renderPackageSection(client) {
     const unuseBtn = createEl("button", "button", "Undo Session");
     unuseBtn.type = "button";
     unuseBtn.disabled = used <= 0;
-    unuseBtn.addEventListener("click", () => {
-      if (Array.isArray(pkg.sessionUseDates) && pkg.sessionUseDates.length > 0) {
-        pkg.sessionUseDates.pop();
+    unuseBtn.addEventListener("click", async () => {
+      unuseBtn.disabled = true;
+      try {
+        await apiUndoPackageSession(pkg.id);
+        await refreshStateAndRender();
+      } catch (err) {
+        alert(err.message || "Failed to undo session.");
+        unuseBtn.disabled = used <= 0;
       }
-      syncPackageUsage(pkg);
-      saveState();
-      render();
     });
 
     const historyBtn = createEl("button", "button", "Session Usage History");
@@ -1193,13 +1234,18 @@ function renderPackageSection(client) {
     deletePkgBtn.type = "button";
     deletePkgBtn.setAttribute("aria-label", "Delete package");
     deletePkgBtn.appendChild(createTrashIcon());
-    deletePkgBtn.addEventListener("click", () => {
+    deletePkgBtn.addEventListener("click", async () => {
       const label = PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || "package";
       const ok = confirm(`Delete this ${label} purchase from ${formatDate(pkg.purchaseDate)}?`);
       if (!ok) return;
-      appState.packages = appState.packages.filter((p) => p.id !== pkg.id);
-      saveState();
-      render();
+      deletePkgBtn.disabled = true;
+      try {
+        await apiDeletePackage(pkg.id);
+        await refreshStateAndRender();
+      } catch (err) {
+        alert(err.message || "Failed to delete package.");
+        deletePkgBtn.disabled = false;
+      }
     });
 
     actions.append(useBtn, unuseBtn, historyBtn, deletePkgBtn);
@@ -2229,7 +2275,7 @@ function setupSessionUseDateDialog() {
     closeDialog(dialog);
   });
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!input.value) input.value = toPacificDateInputValue();
     if (!pendingSessionUsePackageId && !pendingSessionDateEdit) {
@@ -2239,41 +2285,37 @@ function setupSessionUseDateDialog() {
 
     if (pendingSessionDateEdit) {
       const editRef = pendingSessionDateEdit;
-      const pkg = appState.packages.find((item) => item.id === editRef.packageId);
       pendingSessionDateEdit = null;
       pendingSessionUsePackageId = null;
-      if (!pkg) {
-        closeDialog(dialog);
-        return;
+      try {
+        await apiEditPackageSessionDate(editRef.packageId, editRef.useIndex, input.value);
+        await refreshStateAndRender();
+      } catch (err) {
+        alert(err.message || "Failed to update session date.");
       }
-      if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
-      if (editRef.useIndex >= 0 && editRef.useIndex < pkg.sessionUseDates.length) {
-        pkg.sessionUseDates[editRef.useIndex] = toLocalNoonISOString(input.value);
-      }
-      saveState();
       title.textContent = "Use 1 Session";
       submitBtn.textContent = "Use Session";
       closeDialog(dialog);
-      render();
-      openSessionHistoryDialog(pkg);
+      const refreshedPkg = appState.packages.find((item) => item.id === editRef.packageId);
+      if (refreshedPkg) openSessionHistoryDialog(refreshedPkg);
       return;
     }
 
-    const pkg = appState.packages.find((item) => item.id === pendingSessionUsePackageId);
+    const packageId = pendingSessionUsePackageId;
     pendingSessionUsePackageId = null;
-    if (!pkg) {
+    if (!packageId) {
       closeDialog(dialog);
       return;
     }
-
-    if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
-    pkg.sessionUseDates.push(toLocalNoonISOString(input.value));
-    syncPackageUsage(pkg);
-    saveState();
+    try {
+      await apiUsePackageSession(packageId, input.value);
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to record used session.");
+    }
     title.textContent = "Use 1 Session";
     submitBtn.textContent = "Use Session";
     closeDialog(dialog);
-    render();
   });
 }
 

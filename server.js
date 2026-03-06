@@ -70,6 +70,13 @@ const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "";
 const INQUIRY_TO_EMAIL = process.env.INQUIRY_TO_EMAIL || "shane@movewellseattle.com";
 const INQUIRY_WEBHOOK_URL = process.env.INQUIRY_WEBHOOK_URL || "";
+const PACKAGE_DEFS = {
+  single: { sessions: 1, fallbackPrice: 115 },
+  five: { sessions: 5, fallbackPrice: 500 },
+  ten: { sessions: 10, fallbackPrice: 950 },
+  semiSingle: { sessions: 1, fallbackPrice: 75 },
+  semiTen: { sessions: 10, fallbackPrice: 680 },
+};
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(__dirname));
@@ -106,6 +113,51 @@ function getPersistedStateShape(state) {
     homework: Array.isArray(state?.homework) ? state.homework : [],
     settings: state?.settings && typeof state.settings === "object" ? state.settings : {},
   };
+}
+
+function normalizeAdminState(state) {
+  const base = state && typeof state === "object" ? { ...state } : {};
+  if (!Array.isArray(base.clients)) base.clients = [];
+  if (!Array.isArray(base.visits)) base.visits = [];
+  if (!Array.isArray(base.posturalAnalyses)) base.posturalAnalyses = [];
+  if (!Array.isArray(base.files)) base.files = [];
+  if (!Array.isArray(base.resources)) base.resources = [];
+  if (!Array.isArray(base.resourceShares)) base.resourceShares = [];
+  if (!Array.isArray(base.packages)) base.packages = [];
+  if (!Array.isArray(base.homework)) base.homework = [];
+  if (!base.settings || typeof base.settings !== "object") base.settings = {};
+  if (!base.settings.prices || typeof base.settings.prices !== "object") base.settings.prices = {};
+  return base;
+}
+
+function serverUid(prefix) {
+  return `${prefix}_${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function toIsoNoon(dateValue) {
+  const raw = String(dateValue || "").trim();
+  const parts = raw.split("-").map((value) => Number(value));
+  if (parts.length !== 3) return new Date().toISOString();
+  const [year, month, day] = parts;
+  const dt = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (Number.isNaN(dt.getTime())) return new Date().toISOString();
+  return dt.toISOString();
+}
+
+function packageSessionsUsed(pkg) {
+  const total = Number(pkg?.sessionsTotal || 0);
+  const fromDates = Array.isArray(pkg?.sessionUseDates) ? pkg.sessionUseDates.length : 0;
+  const fromFieldRaw = Number(pkg?.sessionsUsed || 0);
+  const fromField = Number.isFinite(fromFieldRaw) ? fromFieldRaw : 0;
+  const boundedField = Math.max(0, Math.min(total, fromField));
+  const boundedDates = Math.max(0, Math.min(total, fromDates));
+  return Math.max(boundedField, boundedDates);
+}
+
+function syncPackageUsage(pkg) {
+  if (!pkg) return;
+  if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+  pkg.sessionsUsed = packageSessionsUsed(pkg);
 }
 
 function scoreClientForPortal(state, clientId) {
@@ -448,6 +500,175 @@ app.put("/api/state", requireAdminAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: `Failed to write cloud state: ${err.message}` });
+  }
+});
+
+app.post("/api/packages", requireAdminAuth, async (req, res) => {
+  try {
+    const { clientId, type, purchaseDate, neverExpires } = req.body || {};
+    const normalizedType = String(type || "");
+    const pkgDef = PACKAGE_DEFS[normalizedType];
+    if (!clientId || !pkgDef) {
+      res.status(400).json({ error: "clientId and valid package type are required." });
+      return;
+    }
+    const dateRaw = String(purchaseDate || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      res.status(400).json({ error: "purchaseDate must be YYYY-MM-DD." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const client = state.clients.find((item) => item.id === clientId);
+    if (!client) {
+      res.status(404).json({ error: "Client not found." });
+      return;
+    }
+
+    const priceFromSettings = Number(state.settings?.prices?.[normalizedType]);
+    const preTax = Number.isFinite(priceFromSettings) ? priceFromSettings : pkgDef.fallbackPrice;
+    const taxRate = Number(state.settings?.taxRate || 0) / 100;
+    const tax = Number((preTax * taxRate).toFixed(2));
+    const total = Number((preTax + tax).toFixed(2));
+
+    const pkg = {
+      id: serverUid("pkg"),
+      clientId,
+      createdAt: new Date().toISOString(),
+      type: normalizedType,
+      sessionsTotal: pkgDef.sessions,
+      sessionsUsed: 0,
+      sessionUseDates: [],
+      purchaseDate: dateRaw,
+      neverExpires: Boolean(neverExpires),
+      preTax,
+      tax,
+      total,
+      squarePaymentId: "",
+    };
+
+    state.packages.push(pkg);
+    await writeAppState(state);
+    res.json({ ok: true, package: pkg });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to create package: ${err.message}` });
+  }
+});
+
+app.post("/api/packages/:packageId/use-session", requireAdminAuth, async (req, res) => {
+  try {
+    const packageId = String(req.params.packageId || "");
+    const dateRaw = String(req.body?.date || "").trim();
+    if (!packageId) {
+      res.status(400).json({ error: "Package id is required." });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      res.status(400).json({ error: "Session date must be YYYY-MM-DD." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const pkg = state.packages.find((item) => item.id === packageId);
+    if (!pkg) {
+      res.status(404).json({ error: "Package not found." });
+      return;
+    }
+    syncPackageUsage(pkg);
+    if (pkg.sessionsUsed >= Number(pkg.sessionsTotal || 0)) {
+      res.status(400).json({ error: "All sessions already used for this package." });
+      return;
+    }
+    pkg.sessionUseDates.push(toIsoNoon(dateRaw));
+    syncPackageUsage(pkg);
+    await writeAppState(state);
+    res.json({ ok: true, package: pkg });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to use session: ${err.message}` });
+  }
+});
+
+app.post("/api/packages/:packageId/edit-session-date", requireAdminAuth, async (req, res) => {
+  try {
+    const packageId = String(req.params.packageId || "");
+    const useIndex = Number(req.body?.useIndex);
+    const dateRaw = String(req.body?.date || "").trim();
+    if (!packageId) {
+      res.status(400).json({ error: "Package id is required." });
+      return;
+    }
+    if (!Number.isInteger(useIndex) || useIndex < 0) {
+      res.status(400).json({ error: "useIndex must be a non-negative integer." });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      res.status(400).json({ error: "Session date must be YYYY-MM-DD." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const pkg = state.packages.find((item) => item.id === packageId);
+    if (!pkg) {
+      res.status(404).json({ error: "Package not found." });
+      return;
+    }
+    if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+    if (useIndex >= pkg.sessionUseDates.length) {
+      res.status(400).json({ error: "Session index is out of range." });
+      return;
+    }
+    pkg.sessionUseDates[useIndex] = toIsoNoon(dateRaw);
+    syncPackageUsage(pkg);
+    await writeAppState(state);
+    res.json({ ok: true, package: pkg });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to edit session date: ${err.message}` });
+  }
+});
+
+app.post("/api/packages/:packageId/undo-session", requireAdminAuth, async (req, res) => {
+  try {
+    const packageId = String(req.params.packageId || "");
+    if (!packageId) {
+      res.status(400).json({ error: "Package id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const pkg = state.packages.find((item) => item.id === packageId);
+    if (!pkg) {
+      res.status(404).json({ error: "Package not found." });
+      return;
+    }
+    if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+    if (pkg.sessionUseDates.length > 0) pkg.sessionUseDates.pop();
+    syncPackageUsage(pkg);
+    await writeAppState(state);
+    res.json({ ok: true, package: pkg });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to undo session: ${err.message}` });
+  }
+});
+
+app.delete("/api/packages/:packageId", requireAdminAuth, async (req, res) => {
+  try {
+    const packageId = String(req.params.packageId || "");
+    if (!packageId) {
+      res.status(400).json({ error: "Package id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const exists = state.packages.some((item) => item.id === packageId);
+    if (!exists) {
+      res.status(404).json({ error: "Package not found." });
+      return;
+    }
+    state.packages = state.packages.filter((item) => item.id !== packageId);
+    await writeAppState(state);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to delete package: ${err.message}` });
   }
 });
 
