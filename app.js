@@ -571,6 +571,33 @@ async function apiDeletePackage(packageId) {
   });
 }
 
+async function apiSavePosturalAnalysis(clientId, notes) {
+  await apiFetch(`/api/clients/${encodeURIComponent(clientId)}/postural-analysis`, {
+    method: "POST",
+    body: JSON.stringify({ notes }),
+  });
+}
+
+async function apiCreateSessionNote(clientId, payload) {
+  await apiFetch(`/api/clients/${encodeURIComponent(clientId)}/session-notes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiUpdateSessionNote(visitId, payload) {
+  await apiFetch(`/api/visits/${encodeURIComponent(visitId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiDeleteSessionNote(visitId) {
+  await apiFetch(`/api/visits/${encodeURIComponent(visitId)}`, {
+    method: "DELETE",
+  });
+}
+
 async function refreshSquareStatus() {
   try {
     const data = await apiFetch("/api/square/status");
@@ -882,9 +909,15 @@ function renderVisitSection(client) {
     .filter((entry) => entry.clientId === client.id)
     .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))[0];
   posturalNotesInput.value = client.posturalAnalysisNotes || latestLegacyPostural?.notes || "";
-  posturalNotesInput.addEventListener("change", () => {
-    client.posturalAnalysisNotes = posturalNotesInput.value;
-    saveState();
+  posturalNotesInput.addEventListener("change", async () => {
+    const latestValue = posturalNotesInput.value;
+    client.posturalAnalysisNotes = latestValue;
+    try {
+      await apiSavePosturalAnalysis(client.id, latestValue);
+      await syncStateFromCloud();
+    } catch (err) {
+      alert(err.message || "Failed to save postural analysis.");
+    }
   });
   posturalNotesLabel.appendChild(posturalNotesInput);
 
@@ -905,16 +938,19 @@ function renderVisitSection(client) {
   const addVisitBtn = createEl("button", "button primary", "Add Session Note");
   addVisitBtn.type = "button";
   addVisitBtn.classList.add("full", "fit-content-row-cta");
-  addVisitBtn.addEventListener("click", () => {
-    appState.visits.push({
-      id: uid("visit"),
-      clientId: client.id,
-      date: visitDateInput.value || toPacificDateInputValue(),
-      notes: visitNotesInput.value,
-      createdAt: new Date().toISOString(),
-    });
-    saveState();
-    renderVisitSection(client);
+  addVisitBtn.addEventListener("click", async () => {
+    setButtonLoading(addVisitBtn, true, "Saving...");
+    try {
+      await apiCreateSessionNote(client.id, {
+        date: visitDateInput.value || toPacificDateInputValue(),
+        notes: visitNotesInput.value || "",
+        posturalAnalysisNotes: posturalNotesInput.value || "",
+      });
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to add session note.");
+      setButtonLoading(addVisitBtn, false);
+    }
   });
 
   const visitFilter = getVisitFilter(client.id);
@@ -1014,11 +1050,16 @@ function renderVisitSection(client) {
       const deleteCell = createEl("td");
       const deleteBtn = createEl("button", "text-link subdued", "Delete");
       deleteBtn.type = "button";
-      deleteBtn.addEventListener("click", () => {
+      deleteBtn.addEventListener("click", async () => {
         if (!confirm(`Delete this session note from ${formatDate(item.date)}?`)) return;
-        appState.visits = appState.visits.filter((v) => v.id !== item.id);
-        saveState();
-        renderVisitSection(client);
+        deleteBtn.disabled = true;
+        try {
+          await apiDeleteSessionNote(item.id);
+          await refreshStateAndRender();
+        } catch (err) {
+          alert(err.message || "Failed to delete session note.");
+          deleteBtn.disabled = false;
+        }
       });
       deleteCell.appendChild(deleteBtn);
       row.appendChild(deleteCell);
@@ -2274,19 +2315,24 @@ function setupSessionNoteDialog() {
   if (!dialog || !form || !cancelBtn || !dateInput || !notesInput) return;
 
   cancelBtn.addEventListener("click", () => closeDialog(dialog));
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const sessionId = form.dataset.sessionId;
     const session = appState.visits.find((item) => item.id === sessionId);
     if (!session) return;
-
-    session.date = dateInput.value || session.date;
-    session.notes = notesInput.value || "";
-    session.updatedAt = new Date().toISOString();
-    saveState();
-    closeDialog(dialog);
-    const client = selectedClient();
-    if (client) renderVisitSection(client);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    setButtonLoading(submitBtn, true, "Saving...");
+    try {
+      await apiUpdateSessionNote(sessionId, {
+        date: dateInput.value || session.date,
+        notes: notesInput.value || "",
+      });
+      closeDialog(dialog);
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to update session note.");
+      setButtonLoading(submitBtn, false);
+    }
   });
 }
 

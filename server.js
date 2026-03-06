@@ -672,6 +672,138 @@ app.delete("/api/packages/:packageId", requireAdminAuth, async (req, res) => {
   }
 });
 
+app.post("/api/clients/:clientId/postural-analysis", requireAdminAuth, async (req, res) => {
+  try {
+    const clientId = String(req.params.clientId || "");
+    const notes = String(req.body?.notes || "");
+    if (!clientId) {
+      res.status(400).json({ error: "Client id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const client = state.clients.find((item) => item.id === clientId);
+    if (!client) {
+      res.status(404).json({ error: "Client not found." });
+      return;
+    }
+
+    client.posturalAnalysisNotes = notes;
+    await writeAppState(state);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to save postural analysis: ${err.message}` });
+  }
+});
+
+app.post("/api/clients/:clientId/session-notes", requireAdminAuth, async (req, res) => {
+  try {
+    const clientId = String(req.params.clientId || "");
+    const dateRaw = String(req.body?.date || "").trim();
+    const notes = String(req.body?.notes || "");
+    const posturalAnalysisNotes = req.body?.posturalAnalysisNotes;
+    if (!clientId) {
+      res.status(400).json({ error: "Client id is required." });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      res.status(400).json({ error: "Session date must be YYYY-MM-DD." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const client = state.clients.find((item) => item.id === clientId);
+    if (!client) {
+      res.status(404).json({ error: "Client not found." });
+      return;
+    }
+    if (typeof posturalAnalysisNotes === "string") {
+      client.posturalAnalysisNotes = posturalAnalysisNotes;
+    }
+
+    const now = Date.now();
+    const duplicate = state.visits.find((visit) => {
+      if (visit.clientId !== clientId) return false;
+      if (String(visit.date || "") !== dateRaw) return false;
+      if (String(visit.notes || "") !== notes) return false;
+      const createdAtTs = new Date(visit.createdAt || 0).getTime();
+      if (!Number.isFinite(createdAtTs)) return false;
+      return Math.abs(now - createdAtTs) <= 15000;
+    });
+
+    if (duplicate) {
+      await writeAppState(state);
+      res.json({ ok: true, duplicate: true, visit: duplicate });
+      return;
+    }
+
+    const visit = {
+      id: serverUid("visit"),
+      clientId,
+      date: dateRaw,
+      notes,
+      createdAt: new Date().toISOString(),
+    };
+    state.visits.push(visit);
+    await writeAppState(state);
+    res.json({ ok: true, visit });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to add session note: ${err.message}` });
+  }
+});
+
+app.patch("/api/visits/:visitId", requireAdminAuth, async (req, res) => {
+  try {
+    const visitId = String(req.params.visitId || "");
+    const dateRaw = String(req.body?.date || "").trim();
+    const notes = String(req.body?.notes || "");
+    if (!visitId) {
+      res.status(400).json({ error: "Visit id is required." });
+      return;
+    }
+    if (dateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      res.status(400).json({ error: "Session date must be YYYY-MM-DD." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const visit = state.visits.find((item) => item.id === visitId);
+    if (!visit) {
+      res.status(404).json({ error: "Session note not found." });
+      return;
+    }
+    if (dateRaw) visit.date = dateRaw;
+    visit.notes = notes;
+    visit.updatedAt = new Date().toISOString();
+    await writeAppState(state);
+    res.json({ ok: true, visit });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to update session note: ${err.message}` });
+  }
+});
+
+app.delete("/api/visits/:visitId", requireAdminAuth, async (req, res) => {
+  try {
+    const visitId = String(req.params.visitId || "");
+    if (!visitId) {
+      res.status(400).json({ error: "Visit id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const exists = state.visits.some((item) => item.id === visitId);
+    if (!exists) {
+      res.status(404).json({ error: "Session note not found." });
+      return;
+    }
+    state.visits = state.visits.filter((item) => item.id !== visitId);
+    await writeAppState(state);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to delete session note: ${err.message}` });
+  }
+});
+
 app.post("/api/client-portal/login", async (req, res) => {
   try {
     const { email, phoneLast4 } = req.body || {};
