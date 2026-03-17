@@ -204,8 +204,6 @@ async function syncStateFromCloud() {
     Object.assign(appState, state);
     if (localSelectedClientId && appState.clients.some((client) => client.id === localSelectedClientId)) {
       appState.selectedClientId = localSelectedClientId;
-    } else if (!appState.selectedClientId && appState.clients.length > 0) {
-      appState.selectedClientId = appState.clients[0].id;
     }
     normalizeSettingsState();
     saveState({ skipCloud: true });
@@ -769,6 +767,7 @@ function openSessionHistoryDialog(pkg) {
           if (!dialog || !input || !title || !submitBtn) return;
           pendingSessionDateEdit = { packageId: pkg.id, useIndex: entry.index };
           pendingSessionUsePackageId = null;
+          pendingSessionUndoPackageId = null;
           input.value = toDateInputValue(entry.date);
           title.textContent = "Edit Session Date";
           submitBtn.textContent = "Save Date";
@@ -1317,6 +1316,7 @@ function renderPackageSection(client) {
       if (!dialog || !input || !title || !submitBtn) return;
       pendingSessionUsePackageId = pkg.id;
       pendingSessionDateEdit = null;
+      pendingSessionUndoPackageId = null;
       input.value = toPacificDateInputValue();
       title.textContent = "Use 1 Session";
       submitBtn.textContent = "Use Session";
@@ -2499,7 +2499,6 @@ function setupSquareImportButton() {
 
 function seedIfEmpty() {
   if (appState.clients.length > 0) {
-    if (!appState.selectedClientId) appState.selectedClientId = appState.clients[0].id;
     return;
   }
   const demoClient = {
@@ -2515,6 +2514,12 @@ function seedIfEmpty() {
   appState.clients.push(demoClient);
   appState.selectedClientId = demoClient.id;
   saveState();
+}
+
+function applyStarterClientView() {
+  appState.selectedClientId = null;
+  appState.ui.topPage = "clients";
+  appState.ui.activeTab = "overview";
 }
 
 function setAdminView(isAuthed) {
@@ -2575,6 +2580,8 @@ function setupAdminLoginForm() {
         setAdminView(true);
         setAdminLoginStatus("");
         await startApp();
+        applyStarterClientView();
+        render();
       } catch (err) {
         adminToken = "";
         clearAdminToken();
@@ -2639,6 +2646,8 @@ async function init() {
   if (!isAuthed) return;
   try {
     await startApp();
+    applyStarterClientView();
+    render();
   } catch (err) {
     adminToken = "";
     clearAdminToken();
