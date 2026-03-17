@@ -88,6 +88,7 @@ function clearAdminToken() {
 let adminToken = readAdminToken();
 let pendingSessionUsePackageId = null;
 let pendingSessionDateEdit = null;
+let pendingSessionUndoPackageId = null;
 
 function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -431,12 +432,14 @@ function packageSummary(clientId) {
 
 function getPackageSessionsUsed(pkg) {
   const total = Number(pkg?.sessionsTotal || 0);
-  const fromDates = Array.isArray(pkg?.sessionUseDates) ? pkg.sessionUseDates.length : 0;
+  const hasDates = Array.isArray(pkg?.sessionUseDates);
+  const fromDates = hasDates ? pkg.sessionUseDates.length : 0;
   const fromFieldRaw = Number(pkg?.sessionsUsed || 0);
   const fromField = Number.isFinite(fromFieldRaw) ? fromFieldRaw : 0;
   const boundedField = Math.max(0, Math.min(total, fromField));
   const boundedDates = Math.max(0, Math.min(total, fromDates));
-  return Math.max(boundedField, boundedDates);
+  if (hasDates) return boundedDates;
+  return boundedField;
 }
 
 function syncPackageUsage(pkg) {
@@ -574,6 +577,13 @@ async function apiEditPackageSessionDate(packageId, useIndex, dateValue) {
 async function apiUndoPackageSession(packageId) {
   await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/undo-session`, {
     method: "POST",
+  });
+}
+
+async function apiUndoPackageSessionByDate(packageId, dateValue) {
+  await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/undo-session`, {
+    method: "POST",
+    body: JSON.stringify({ date: dateValue }),
   });
 }
 
@@ -1316,16 +1326,20 @@ function renderPackageSection(client) {
     const unuseBtn = createEl("button", "button", "Undo Session");
     unuseBtn.type = "button";
     unuseBtn.disabled = used <= 0;
-    unuseBtn.addEventListener("click", async () => {
-      setButtonLoading(unuseBtn, true, "Undoing...");
-      try {
-        await apiUndoPackageSession(pkg.id);
-        await refreshStateAndRender();
-      } catch (err) {
-        alert(err.message || "Failed to undo session.");
-        setButtonLoading(unuseBtn, false);
-        unuseBtn.disabled = used <= 0;
-      }
+    unuseBtn.addEventListener("click", () => {
+      const dialog = document.getElementById("session-use-date-dialog");
+      const input = document.getElementById("session-use-date-input");
+      const title = document.getElementById("session-use-date-title");
+      const submitBtn = document.getElementById("session-use-date-submit-btn");
+      if (!dialog || !input || !title || !submitBtn) return;
+      pendingSessionUsePackageId = null;
+      pendingSessionDateEdit = null;
+      pendingSessionUndoPackageId = pkg.id;
+      const lastUsedDate = useDates.length > 0 ? useDates[useDates.length - 1] : null;
+      input.value = toDateInputValue(lastUsedDate);
+      title.textContent = "Undo Session";
+      submitBtn.textContent = "Undo Session";
+      openDialog(dialog);
     });
 
     const historyBtn = createEl("button", "button", "Session Usage History");
@@ -2384,6 +2398,7 @@ function setupSessionUseDateDialog() {
   cancelBtn.addEventListener("click", () => {
     pendingSessionUsePackageId = null;
     pendingSessionDateEdit = null;
+    pendingSessionUndoPackageId = null;
     title.textContent = "Use 1 Session";
     submitBtn.textContent = "Use Session";
     closeDialog(dialog);
@@ -2392,7 +2407,7 @@ function setupSessionUseDateDialog() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!input.value) input.value = toPacificDateInputValue();
-    if (!pendingSessionUsePackageId && !pendingSessionDateEdit) {
+    if (!pendingSessionUsePackageId && !pendingSessionDateEdit && !pendingSessionUndoPackageId) {
       closeDialog(dialog);
       return;
     }
@@ -2402,6 +2417,7 @@ function setupSessionUseDateDialog() {
       const editRef = pendingSessionDateEdit;
       pendingSessionDateEdit = null;
       pendingSessionUsePackageId = null;
+      pendingSessionUndoPackageId = null;
       try {
         await apiEditPackageSessionDate(editRef.packageId, editRef.useIndex, input.value);
         await refreshStateAndRender();
@@ -2418,8 +2434,28 @@ function setupSessionUseDateDialog() {
       return;
     }
 
+    if (pendingSessionUndoPackageId) {
+      const undoPackageId = pendingSessionUndoPackageId;
+      pendingSessionUndoPackageId = null;
+      pendingSessionUsePackageId = null;
+      pendingSessionDateEdit = null;
+      try {
+        await apiUndoPackageSessionByDate(undoPackageId, input.value);
+        await refreshStateAndRender();
+      } catch (err) {
+        alert(err.message || "Failed to undo session.");
+      }
+      title.textContent = "Use 1 Session";
+      delete submitBtn.dataset.originalText;
+      submitBtn.textContent = "Use Session";
+      closeDialog(dialog);
+      setButtonLoading(submitBtn, false);
+      return;
+    }
+
     const packageId = pendingSessionUsePackageId;
     pendingSessionUsePackageId = null;
+    pendingSessionUndoPackageId = null;
     if (!packageId) {
       closeDialog(dialog);
       return;

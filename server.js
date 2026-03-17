@@ -175,12 +175,14 @@ function toIsoNoon(dateValue) {
 
 function packageSessionsUsed(pkg) {
   const total = Number(pkg?.sessionsTotal || 0);
-  const fromDates = Array.isArray(pkg?.sessionUseDates) ? pkg.sessionUseDates.length : 0;
+  const hasDates = Array.isArray(pkg?.sessionUseDates);
+  const fromDates = hasDates ? pkg.sessionUseDates.length : 0;
   const fromFieldRaw = Number(pkg?.sessionsUsed || 0);
   const fromField = Number.isFinite(fromFieldRaw) ? fromFieldRaw : 0;
   const boundedField = Math.max(0, Math.min(total, fromField));
   const boundedDates = Math.max(0, Math.min(total, fromDates));
-  return Math.max(boundedField, boundedDates);
+  if (hasDates) return boundedDates;
+  return boundedField;
 }
 
 function syncPackageUsage(pkg) {
@@ -669,8 +671,13 @@ app.post("/api/packages/:packageId/edit-session-date", requireAdminAuth, async (
 app.post("/api/packages/:packageId/undo-session", requireAdminAuth, async (req, res) => {
   try {
     const packageId = String(req.params.packageId || "");
+    const dateRaw = String(req.body?.date || "").trim();
     if (!packageId) {
       res.status(400).json({ error: "Package id is required." });
+      return;
+    }
+    if (dateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      res.status(400).json({ error: "Session date must be YYYY-MM-DD." });
       return;
     }
 
@@ -681,7 +688,21 @@ app.post("/api/packages/:packageId/undo-session", requireAdminAuth, async (req, 
       return;
     }
     if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
-    if (pkg.sessionUseDates.length > 0) pkg.sessionUseDates.pop();
+    if (pkg.sessionUseDates.length > 0) {
+      if (dateRaw) {
+        const removeIndex = pkg.sessionUseDates.findIndex((item) => {
+          const isoDate = String(item || "").slice(0, 10);
+          return isoDate === dateRaw;
+        });
+        if (removeIndex === -1) {
+          res.status(400).json({ error: "No used session found on that date for this package." });
+          return;
+        }
+        pkg.sessionUseDates.splice(removeIndex, 1);
+      } else {
+        pkg.sessionUseDates.pop();
+      }
+    }
     syncPackageUsage(pkg);
     await writeAppState(state);
     res.json({ ok: true, package: pkg });
