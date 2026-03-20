@@ -545,6 +545,37 @@ app.put("/api/state", requireAdminAuth, async (req, res) => {
   }
 });
 
+app.post("/api/clients", requireAdminAuth, async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim();
+    const phone = String(req.body?.phone || "").trim();
+    if (!name) {
+      res.status(400).json({ error: "Client name is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const client = {
+      id: serverUid("client"),
+      name,
+      email,
+      phone,
+      address: "",
+      birthday: "",
+      notes: "",
+      healthHistory: "",
+      posturalAnalysisNotes: "",
+      createdAt: new Date().toISOString(),
+    };
+    state.clients.push(client);
+    await writeAppState(state);
+    res.json({ ok: true, client });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to create client: ${err.message}` });
+  }
+});
+
 app.post("/api/packages", requireAdminAuth, async (req, res) => {
   try {
     const { clientId, type, purchaseDate, neverExpires } = req.body || {};

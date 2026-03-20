@@ -558,6 +558,13 @@ async function apiCreatePackagePurchase(payload) {
   });
 }
 
+async function apiCreateClient(payload) {
+  return apiFetch("/api/clients", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 async function apiUsePackageSession(packageId, dateValue) {
   await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/use-session`, {
     method: "POST",
@@ -2232,25 +2239,31 @@ function setupNewClientDialog() {
   });
   if (cancelBtn) cancelBtn.addEventListener("click", () => closeDialog(dialog));
 
-  form.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = new FormData(form);
-    const client = {
-      id: uid("client"),
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const payload = {
       name: (data.get("name") || "").toString().trim(),
       email: (data.get("email") || "").toString().trim(),
       phone: (data.get("phone") || "").toString().trim(),
-      address: "",
-      birthday: "",
-      notes: "",
-      createdAt: new Date().toISOString(),
     };
-    appState.clients.push(client);
-    appState.selectedClientId = client.id;
-    saveState();
-    form.reset();
-    closeDialog(dialog);
-    render();
+    if (!payload.name) {
+      alert("Client name is required.");
+      return;
+    }
+    setButtonLoading(submitBtn, true, "Saving...");
+    try {
+      const result = await apiCreateClient(payload);
+      if (result?.client?.id) appState.selectedClientId = result.client.id;
+      form.reset();
+      closeDialog(dialog);
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to add client.");
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
   });
 }
 
