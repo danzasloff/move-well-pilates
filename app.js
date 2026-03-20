@@ -565,6 +565,19 @@ async function apiCreateClient(payload) {
   });
 }
 
+async function apiUpdateClient(clientId, payload) {
+  return apiFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiDeleteClient(clientId) {
+  return apiFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
+    method: "DELETE",
+  });
+}
+
 async function apiUsePackageSession(packageId, dateValue) {
   await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/use-session`, {
     method: "POST",
@@ -883,10 +896,18 @@ function renderClientForm(client) {
     const input = createEl("input");
     input.type = type;
     input.value = client[key] || "";
-    input.addEventListener("change", () => {
-      client[key] = input.value;
+    input.addEventListener("change", async () => {
+      const nextValue = input.value;
+      client[key] = nextValue;
       saveState();
       renderClientList();
+      try {
+        await apiUpdateClient(client.id, { [key]: nextValue });
+        await refreshStateAndRender();
+      } catch (err) {
+        alert(err.message || "Failed to update client.");
+        await refreshStateAndRender();
+      }
     });
     label.appendChild(input);
     if (key === "address") label.classList.add("full");
@@ -897,9 +918,17 @@ function renderClientForm(client) {
   healthLabel.textContent = "Client Health History";
   const healthNotes = createEl("textarea");
   healthNotes.value = client.healthHistory || "";
-  healthNotes.addEventListener("change", () => {
-    client.healthHistory = healthNotes.value;
+  healthNotes.addEventListener("change", async () => {
+    const nextValue = healthNotes.value;
+    client.healthHistory = nextValue;
     saveState();
+    try {
+      await apiUpdateClient(client.id, { healthHistory: nextValue });
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to update health history.");
+      await refreshStateAndRender();
+    }
   });
   healthLabel.appendChild(healthNotes);
   form.appendChild(healthLabel);
@@ -910,18 +939,15 @@ function renderClientForm(client) {
   const deleteIcon = createTrashIcon();
   const deleteText = createEl("span", "", "Delete Client");
   deleteBtn.append(deleteIcon, deleteText);
-  deleteBtn.addEventListener("click", () => {
+  deleteBtn.addEventListener("click", async () => {
     if (!confirm("Delete this client and all related records?")) return;
-    appState.clients = appState.clients.filter((c) => c.id !== client.id);
-    appState.visits = appState.visits.filter((v) => v.clientId !== client.id);
-    appState.posturalAnalyses = appState.posturalAnalyses.filter((p) => p.clientId !== client.id);
-    appState.files = appState.files.filter((f) => f.clientId !== client.id);
-    appState.packages = appState.packages.filter((p) => p.clientId !== client.id);
-    appState.homework = appState.homework.filter((h) => h.clientId !== client.id);
-    appState.resourceShares = (appState.resourceShares || []).filter((item) => item.clientId !== client.id);
-    appState.selectedClientId = appState.clients[0]?.id || null;
-    saveState();
-    render();
+    try {
+      await apiDeleteClient(client.id);
+      if (appState.selectedClientId === client.id) appState.selectedClientId = null;
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to delete client.");
+    }
   });
   deleteRow.appendChild(deleteBtn);
   form.appendChild(deleteRow);

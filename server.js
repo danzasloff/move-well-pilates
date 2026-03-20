@@ -576,6 +576,88 @@ app.post("/api/clients", requireAdminAuth, async (req, res) => {
   }
 });
 
+app.patch("/api/clients/:clientId", requireAdminAuth, async (req, res) => {
+  try {
+    const clientId = String(req.params.clientId || "");
+    if (!clientId) {
+      res.status(400).json({ error: "Client id is required." });
+      return;
+    }
+
+    const allowedFields = [
+      "name",
+      "email",
+      "phone",
+      "address",
+      "birthday",
+      "notes",
+      "healthHistory",
+      "posturalAnalysisNotes",
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+        updates[field] = String(req.body[field] ?? "").trim();
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "No editable fields provided." });
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "name") && !updates.name) {
+      res.status(400).json({ error: "Client name is required." });
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "birthday") && updates.birthday && !/^\d{4}-\d{2}-\d{2}$/.test(updates.birthday)) {
+      res.status(400).json({ error: "Birthday must be YYYY-MM-DD." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const client = state.clients.find((item) => item.id === clientId);
+    if (!client) {
+      res.status(404).json({ error: "Client not found." });
+      return;
+    }
+
+    Object.assign(client, updates, { updatedAt: new Date().toISOString() });
+    await writeAppState(state);
+    res.json({ ok: true, client });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to update client: ${err.message}` });
+  }
+});
+
+app.delete("/api/clients/:clientId", requireAdminAuth, async (req, res) => {
+  try {
+    const clientId = String(req.params.clientId || "");
+    if (!clientId) {
+      res.status(400).json({ error: "Client id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const exists = state.clients.some((item) => item.id === clientId);
+    if (!exists) {
+      res.status(404).json({ error: "Client not found." });
+      return;
+    }
+
+    state.clients = state.clients.filter((item) => item.id !== clientId);
+    state.visits = state.visits.filter((item) => item.clientId !== clientId);
+    state.posturalAnalyses = state.posturalAnalyses.filter((item) => item.clientId !== clientId);
+    state.files = state.files.filter((item) => item.clientId !== clientId);
+    state.packages = state.packages.filter((item) => item.clientId !== clientId);
+    state.homework = state.homework.filter((item) => item.clientId !== clientId);
+    state.resourceShares = state.resourceShares.filter((item) => item.clientId !== clientId);
+
+    await writeAppState(state);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to delete client: ${err.message}` });
+  }
+});
+
 app.post("/api/packages", requireAdminAuth, async (req, res) => {
   try {
     const { clientId, type, purchaseDate, neverExpires } = req.body || {};
