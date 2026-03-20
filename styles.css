@@ -534,6 +534,19 @@ textarea {
   text-align: right;
 }
 
+.client-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.client-actions-row .text-link {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
 .text-link.subdued {
   color: #9a9a9a;
 }

@@ -933,7 +933,18 @@ function renderClientForm(client) {
   healthLabel.appendChild(healthNotes);
   form.appendChild(healthLabel);
 
-  const deleteRow = createEl("div", "full align-right");
+  const deleteRow = createEl("div", "full client-actions-row");
+  const editBtn = createEl("button", "text-link", "Edit Client");
+  editBtn.type = "button";
+  editBtn.addEventListener("click", () => {
+    const nameInput = form.querySelector('label input[type="text"], label input[type="email"], label input[type="date"]');
+    if (!nameInput) return;
+    nameInput.focus();
+    if (typeof nameInput.select === "function" && nameInput.type !== "date") {
+      nameInput.select();
+    }
+  });
+
   const deleteBtn = createEl("button", "text-link subdued icon-link");
   deleteBtn.type = "button";
   const deleteIcon = createTrashIcon();
@@ -941,14 +952,20 @@ function renderClientForm(client) {
   deleteBtn.append(deleteIcon, deleteText);
   deleteBtn.addEventListener("click", async () => {
     if (!confirm("Delete this client and all related records?")) return;
+    setButtonLoading(deleteBtn, true, "Deleting...");
+    editBtn.disabled = true;
     try {
       await apiDeleteClient(client.id);
       if (appState.selectedClientId === client.id) appState.selectedClientId = null;
       await refreshStateAndRender();
     } catch (err) {
       alert(err.message || "Failed to delete client.");
+    } finally {
+      setButtonLoading(deleteBtn, false);
+      editBtn.disabled = false;
     }
   });
+  deleteRow.appendChild(editBtn);
   deleteRow.appendChild(deleteBtn);
   form.appendChild(deleteRow);
 
