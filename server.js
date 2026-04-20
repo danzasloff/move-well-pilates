@@ -104,6 +104,26 @@ function writeStateToFile(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state || {}, null, 2));
 }
 
+function isTransientSupabaseError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("temporarily unavailable") ||
+    code === "enotfound" ||
+    code === "eai_again" ||
+    code === "etimedout" ||
+    code === "ecconnreset" ||
+    code === "econnreset"
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function normalizePhoneDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
@@ -346,16 +366,21 @@ function requireAdminAuth(req, res, next) {
 
 async function readAppState() {
   if (!hasSupabase()) return readStateFromFile();
-  const { data, error } = await supabase
-    .from("app_states")
-    .select("state")
-    .eq("id", APP_STATE_KEY)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("app_states")
+      .select("state")
+      .eq("id", APP_STATE_KEY)
+      .maybeSingle();
 
-  if (error && error.code !== "PGRST116") {
-    throw error;
+    if (error && error.code !== "PGRST116") {
+      throw error;
+    }
+    return data?.state || null;
+  } catch (error) {
+    console.error("Supabase read failed, falling back to local state file:", error?.message || error);
+    return readStateFromFile();
   }
-  return data?.state || null;
 }
 
 async function writeAppState(state) {
@@ -363,10 +388,25 @@ async function writeAppState(state) {
     writeStateToFile(state);
     return;
   }
-  const { error } = await supabase
-    .from("app_states")
-    .upsert({ id: APP_STATE_KEY, state, updated_at: new Date().toISOString() }, { onConflict: "id" });
-  if (error) throw error;
+  const payload = { id: APP_STATE_KEY, state, updated_at: new Date().toISOString() };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } = await supabase
+        .from("app_states")
+        .upsert(payload, { onConflict: "id" });
+      if (error) throw error;
+      writeStateToFile(state);
+      return;
+    } catch (error) {
+      const transient = isTransientSupabaseError(error);
+      if (!transient || attempt === 1) {
+        console.error("Supabase write failed, using local state file fallback:", error?.message || error);
+        writeStateToFile(state);
+        return;
+      }
+      await sleep(250);
+    }
+  }
 }
 
 function readTokenFromFile() {
