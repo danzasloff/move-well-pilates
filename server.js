@@ -90,6 +90,21 @@ function hasSupabase() {
   return !!supabase;
 }
 
+async function checkSupabaseReachable() {
+  if (!hasSupabase()) return false;
+  try {
+    const query = supabase.from("app_states").select("id").limit(1);
+    const timeout = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("health check timeout")), 3500);
+    });
+    const result = await Promise.race([query, timeout]);
+    if (!result || typeof result !== "object") return false;
+    return !result.error;
+  } catch {
+    return false;
+  }
+}
+
 function readStateFromFile() {
   try {
     if (!fs.existsSync(STATE_FILE)) return null;
@@ -434,9 +449,12 @@ function ensureSquareConfigured(res) {
 }
 
 app.get("/api/health", async (req, res) => {
+  const supabaseConfigured = hasSupabase();
+  const supabaseReachable = await checkSupabaseReachable();
   res.json({
     ok: true,
-    supabase: hasSupabase(),
+    supabase: supabaseConfigured,
+    supabaseReachable,
     squareConfigured: !!(SQUARE_CLIENT_ID && SQUARE_CLIENT_SECRET),
     adminAuthConfigured: ADMIN_USERS.length > 0,
     smtpConfigured: smtpConfigured(),

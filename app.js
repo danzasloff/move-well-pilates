@@ -89,6 +89,7 @@ let adminToken = readAdminToken();
 let pendingSessionUsePackageId = null;
 let pendingSessionDateEdit = null;
 let pendingSessionUndoPackageId = null;
+let healthPollTimer = null;
 
 function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -525,18 +526,27 @@ function authHeaders(extra = {}) {
 }
 
 async function apiFetch(path, options = {}) {
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(options.headers || {}),
-    },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`);
+  try {
+    const res = await fetch(path, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(options.headers || {}),
+      },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Request failed: ${res.status}`);
+    }
+    return data;
+  } catch (err) {
+    const method = String(options?.method || "GET").toUpperCase();
+    const fetchFailed = String(err?.message || "").toLowerCase().includes("fetch failed");
+    if (fetchFailed && method !== "GET") {
+      throw new Error("Database connection is unavailable right now (Supabase may be paused). Resume Supabase project, then retry.");
+    }
+    throw err;
   }
-  return data;
 }
 
 function cancelPendingCloudSave() {
@@ -664,6 +674,32 @@ async function refreshRuntimeVersion() {
     appState.runtime.service = "";
     appState.runtime.environment = "";
   }
+}
+
+function renderSystemStatusBanner() {
+  const el = document.getElementById("system-status-banner");
+  if (!el) return;
+  const configured = appState.runtime.supabaseConfigured;
+  const reachable = appState.runtime.supabaseReachable;
+  if (configured && !reachable) {
+    el.hidden = false;
+    el.textContent = "Database is currently unavailable. Supabase may be paused. Please resume the Supabase project before making changes.";
+    return;
+  }
+  el.hidden = true;
+  el.textContent = "";
+}
+
+async function refreshSystemHealth() {
+  try {
+    const health = await fetch("/api/health").then((res) => res.json());
+    appState.runtime.supabaseConfigured = !!health?.supabase;
+    appState.runtime.supabaseReachable = !!health?.supabaseReachable;
+  } catch {
+    appState.runtime.supabaseConfigured = true;
+    appState.runtime.supabaseReachable = false;
+  }
+  renderSystemStatusBanner();
 }
 
 function normalizeSquareAmount(payment) {
@@ -2176,6 +2212,7 @@ function render() {
   renderFilesSection(client);
   renderResourcesSection();
   renderSettingsForm();
+  renderSystemStatusBanner();
   setTopPage(topPage);
   setActiveTab(activeTab);
 }
@@ -2692,6 +2729,12 @@ async function startApp() {
 
   await refreshSquareStatus();
   await refreshRuntimeVersion();
+  await refreshSystemHealth();
+  if (!healthPollTimer) {
+    healthPollTimer = setInterval(() => {
+      refreshSystemHealth().catch(() => {});
+    }, 45000);
+  }
   render();
 }
 
