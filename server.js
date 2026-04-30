@@ -159,6 +159,7 @@ function mergeStatePreservingServerAuthoritative(currentRaw, incomingRaw) {
   merged.packages = current.packages;
   merged.visits = current.visits;
   merged.posturalAnalyses = current.posturalAnalyses;
+  merged.homework = current.homework;
 
   // Preserve client postural analysis notes to avoid stale client snapshots wiping them.
   const currentClientById = new Map(current.clients.map((client) => [client.id, client]));
@@ -673,6 +674,114 @@ app.delete("/api/clients/:clientId", requireAdminAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: `Failed to delete client: ${err.message}` });
+  }
+});
+
+app.post("/api/clients/:clientId/homework", requireAdminAuth, async (req, res) => {
+  try {
+    const clientId = String(req.params.clientId || "");
+    const title = String(req.body?.title || "").trim() || "Homework";
+    const notes = String(req.body?.notes || "");
+    const done = !!req.body?.done;
+    const videos = Array.isArray(req.body?.videos) ? req.body.videos : [];
+    if (!clientId) {
+      res.status(400).json({ error: "Client id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const client = state.clients.find((item) => item.id === clientId);
+    if (!client) {
+      res.status(404).json({ error: "Client not found." });
+      return;
+    }
+
+    const homework = {
+      id: serverUid("hw"),
+      clientId,
+      title,
+      notes,
+      videos: videos.map((video) => ({
+        id: String(video?.id || serverUid("hwvid")),
+        name: String(video?.name || "video"),
+        type: String(video?.type || "video/mp4"),
+        size: Number(video?.size || 0),
+        dataUrl: String(video?.dataUrl || ""),
+      })),
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      done,
+    };
+
+    state.homework.push(homework);
+    await writeAppState(state);
+    res.json({ ok: true, homework });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to create homework: ${err.message}` });
+  }
+});
+
+app.patch("/api/homework/:homeworkId", requireAdminAuth, async (req, res) => {
+  try {
+    const homeworkId = String(req.params.homeworkId || "");
+    if (!homeworkId) {
+      res.status(400).json({ error: "Homework id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const homework = state.homework.find((item) => item.id === homeworkId);
+    if (!homework) {
+      res.status(404).json({ error: "Homework item not found." });
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "title")) {
+      homework.title = String(req.body.title || "").trim() || "Homework";
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "notes")) {
+      homework.notes = String(req.body.notes || "");
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "done")) {
+      homework.done = !!req.body.done;
+    }
+    if (Array.isArray(req.body?.videos)) {
+      homework.videos = req.body.videos.map((video) => ({
+        id: String(video?.id || serverUid("hwvid")),
+        name: String(video?.name || "video"),
+        type: String(video?.type || "video/mp4"),
+        size: Number(video?.size || 0),
+        dataUrl: String(video?.dataUrl || ""),
+      }));
+    }
+    homework.updatedAt = new Date().toISOString();
+
+    await writeAppState(state);
+    res.json({ ok: true, homework });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to update homework: ${err.message}` });
+  }
+});
+
+app.delete("/api/homework/:homeworkId", requireAdminAuth, async (req, res) => {
+  try {
+    const homeworkId = String(req.params.homeworkId || "");
+    if (!homeworkId) {
+      res.status(400).json({ error: "Homework id is required." });
+      return;
+    }
+
+    const state = normalizeAdminState(await readAppState());
+    const exists = state.homework.some((item) => item.id === homeworkId);
+    if (!exists) {
+      res.status(404).json({ error: "Homework item not found." });
+      return;
+    }
+    state.homework = state.homework.filter((item) => item.id !== homeworkId);
+    await writeAppState(state);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to delete homework: ${err.message}` });
   }
 });
 

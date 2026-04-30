@@ -648,6 +648,26 @@ async function apiDeleteSessionNote(visitId) {
   });
 }
 
+async function apiCreateHomework(clientId, payload) {
+  await apiFetch(`/api/clients/${encodeURIComponent(clientId)}/homework`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiUpdateHomework(homeworkId, payload) {
+  await apiFetch(`/api/homework/${encodeURIComponent(homeworkId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function apiDeleteHomework(homeworkId) {
+  await apiFetch(`/api/homework/${encodeURIComponent(homeworkId)}`, {
+    method: "DELETE",
+  });
+}
+
 async function refreshSquareStatus() {
   try {
     const data = await apiFetch("/api/square/status");
@@ -1487,30 +1507,33 @@ function renderHomeworkSection(client) {
   addBtn.type = "button";
   addBtn.classList.add("full", "fit-content-row-cta");
   addBtn.addEventListener("click", async () => {
-    const uploadFiles = Array.from(videoInput.files || []);
-    const videos = [];
-    for (const file of uploadFiles) {
-      const dataUrl = await fileToDataUrl(file);
-      videos.push({
-        id: uid("hwvid"),
-        name: file.name,
-        type: file.type || "video/mp4",
-        size: file.size || 0,
-        dataUrl,
-      });
-    }
+    setButtonLoading(addBtn, true, "Saving...");
+    try {
+      const uploadFiles = Array.from(videoInput.files || []);
+      const videos = [];
+      for (const file of uploadFiles) {
+        const dataUrl = await fileToDataUrl(file);
+        videos.push({
+          id: uid("hwvid"),
+          name: file.name,
+          type: file.type || "video/mp4",
+          size: file.size || 0,
+          dataUrl,
+        });
+      }
 
-    appState.homework.push({
-      id: uid("hw"),
-      clientId: client.id,
-      title: titleInput.value || "Homework",
-      notes: instructorInput.value,
-      videos,
-      updatedAt: new Date().toISOString(),
-      done: false,
-    });
-    saveState();
-    renderHomeworkSection(client);
+      await apiCreateHomework(client.id, {
+        title: titleInput.value || "Homework",
+        notes: instructorInput.value,
+        videos,
+        done: false,
+      });
+      await refreshStateAndRender();
+    } catch (err) {
+      alert(err.message || "Failed to add homework.");
+    } finally {
+      setButtonLoading(addBtn, false);
+    }
   });
 
   form.append(titleLabel, instructorLabel, videoLabel, addBtn);
@@ -1524,10 +1547,16 @@ function renderHomeworkSection(client) {
 
       const notesArea = createEl("textarea", "full");
       notesArea.value = item.notes || item.instructorNotes || "";
-      notesArea.addEventListener("change", () => {
-        item.notes = notesArea.value;
-        item.updatedAt = new Date().toISOString();
-        saveState();
+      notesArea.addEventListener("change", async () => {
+        const nextValue = notesArea.value;
+        item.notes = nextValue;
+        try {
+          await apiUpdateHomework(item.id, { notes: nextValue });
+          await refreshStateAndRender();
+        } catch (err) {
+          alert(err.message || "Failed to update homework notes.");
+          await refreshStateAndRender();
+        }
       });
 
       const meta = createEl("p", "meta", `Updated ${formatDate(item.updatedAt)}`);
@@ -1546,11 +1575,15 @@ function renderHomeworkSection(client) {
         const label = createEl("span", "meta", `${videoFile.name} (${formatBytes(videoFile.size)})`);
         const removeVideoBtn = createEl("button", "button", "Remove Video");
         removeVideoBtn.type = "button";
-        removeVideoBtn.addEventListener("click", () => {
-          item.videos = item.videos.filter((v) => v.id !== videoFile.id);
-          item.updatedAt = new Date().toISOString();
-          saveState();
-          renderHomeworkSection(client);
+        removeVideoBtn.addEventListener("click", async () => {
+          try {
+            item.videos = item.videos.filter((v) => v.id !== videoFile.id);
+            await apiUpdateHomework(item.id, { videos: item.videos });
+            await refreshStateAndRender();
+          } catch (err) {
+            alert(err.message || "Failed to remove video.");
+            await refreshStateAndRender();
+          }
         });
         videoRow.append(label, removeVideoBtn);
         existingVideos.append(video, videoRow);
@@ -1566,20 +1599,27 @@ function renderHomeworkSection(client) {
       attachBtn.addEventListener("click", async () => {
         const files = Array.from(attachInput.files || []);
         if (files.length === 0) return;
-        if (!Array.isArray(item.videos)) item.videos = [];
-        for (const file of files) {
-          const dataUrl = await fileToDataUrl(file);
-          item.videos.push({
-            id: uid("hwvid"),
-            name: file.name,
-            type: file.type || "video/mp4",
-            size: file.size || 0,
-            dataUrl,
-          });
+        attachBtn.disabled = true;
+        try {
+          if (!Array.isArray(item.videos)) item.videos = [];
+          for (const file of files) {
+            const dataUrl = await fileToDataUrl(file);
+            item.videos.push({
+              id: uid("hwvid"),
+              name: file.name,
+              type: file.type || "video/mp4",
+              size: file.size || 0,
+              dataUrl,
+            });
+          }
+          await apiUpdateHomework(item.id, { videos: item.videos });
+          await refreshStateAndRender();
+        } catch (err) {
+          alert(err.message || "Failed to attach video.");
+          await refreshStateAndRender();
+        } finally {
+          attachBtn.disabled = false;
         }
-        item.updatedAt = new Date().toISOString();
-        saveState();
-        renderHomeworkSection(client);
       });
       attachWrap.append(attachInput, attachBtn);
 
@@ -1608,19 +1648,26 @@ function renderHomeworkSection(client) {
 
       const doneBtn = createEl("button", "button", item.done ? "Mark In Progress" : "Mark Done");
       doneBtn.type = "button";
-      doneBtn.addEventListener("click", () => {
-        item.done = !item.done;
-        item.updatedAt = new Date().toISOString();
-        saveState();
-        renderHomeworkSection(client);
+      doneBtn.addEventListener("click", async () => {
+        try {
+          item.done = !item.done;
+          await apiUpdateHomework(item.id, { done: item.done });
+          await refreshStateAndRender();
+        } catch (err) {
+          alert(err.message || "Failed to update homework status.");
+          await refreshStateAndRender();
+        }
       });
 
       const deleteBtn = createEl("button", "button", "Delete");
       deleteBtn.type = "button";
-      deleteBtn.addEventListener("click", () => {
-        appState.homework = appState.homework.filter((h) => h.id !== item.id);
-        saveState();
-        renderHomeworkSection(client);
+      deleteBtn.addEventListener("click", async () => {
+        try {
+          await apiDeleteHomework(item.id);
+          await refreshStateAndRender();
+        } catch (err) {
+          alert(err.message || "Failed to delete homework.");
+        }
       });
 
       actions.append(emailLink, textLink, copyBtn, doneBtn, deleteBtn);
