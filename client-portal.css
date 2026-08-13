@@ -207,6 +207,22 @@ select:focus {
   margin-top: 0.2rem;
 }
 
+.homework-notes {
+  margin-top: 0.55rem;
+  line-height: 1.5;
+}
+
+.homework-notes ul,
+.homework-notes ol {
+  margin: 0.35rem 0 0.35rem 1.35rem;
+  padding: 0;
+}
+
+.homework-notes p,
+.homework-notes div {
+  margin: 0 0 0.35rem;
+}
+
 .video {
   width: 100%;
   margin-top: 0.55rem;

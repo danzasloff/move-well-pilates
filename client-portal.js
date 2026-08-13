@@ -42,6 +42,49 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC_TIMEZONE }).format(dt);
 }
 
+const HOMEWORK_ALLOWED_TAGS = new Set(["BR", "DIV", "EM", "I", "LI", "OL", "P", "SPAN", "STRONG", "B", "U", "UL"]);
+const HOMEWORK_ALLOWED_TAG_PATTERN = /<\/?(br|div|em|i|li|ol|p|span|strong|b|u|ul)(\s|>|\/)/i;
+
+function sanitizeHomeworkHtml(value) {
+  const template = document.createElement("template");
+  template.innerHTML = String(value || "");
+
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || "");
+    if (node.nodeType !== Node.ELEMENT_NODE) return document.createDocumentFragment();
+
+    const tag = node.tagName.toUpperCase();
+    if (!HOMEWORK_ALLOWED_TAGS.has(tag)) {
+      const fragment = document.createDocumentFragment();
+      node.childNodes.forEach((child) => fragment.appendChild(cleanNode(child)));
+      return fragment;
+    }
+
+    const normalizedTag = tag === "B" ? "strong" : tag === "I" ? "em" : tag.toLowerCase();
+    const el = document.createElement(normalizedTag);
+    node.childNodes.forEach((child) => el.appendChild(cleanNode(child)));
+    return el;
+  };
+
+  const output = document.createElement("div");
+  template.content.childNodes.forEach((child) => output.appendChild(cleanNode(child)));
+  return output.innerHTML.trim();
+}
+
+function homeworkNotesToHtml(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (HOMEWORK_ALLOWED_TAG_PATTERN.test(raw)) return sanitizeHomeworkHtml(raw);
+  return raw
+    .split(/\n/)
+    .map((line) => {
+      const row = document.createElement("div");
+      row.textContent = line || "\u00a0";
+      return row.outerHTML;
+    })
+    .join("");
+}
+
 function packageLabel(type) {
   const map = {
     single: "Single Session",
@@ -147,8 +190,14 @@ function renderHomework(homework) {
     const title = document.createElement("strong");
     title.textContent = item.title || "Homework";
 
-    const notes = document.createElement("p");
-    notes.textContent = item.notes || "No notes provided.";
+    const notes = document.createElement("div");
+    notes.className = "homework-notes";
+    const notesHtml = homeworkNotesToHtml(item.notes || "");
+    if (notesHtml) {
+      notes.innerHTML = notesHtml;
+    } else {
+      notes.textContent = "No notes provided.";
+    }
 
     const meta = document.createElement("p");
     meta.className = "meta";

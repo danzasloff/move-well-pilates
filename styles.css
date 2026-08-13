@@ -465,6 +465,104 @@ textarea {
   resize: vertical;
 }
 
+.form-label-text {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+
+.rich-text-label {
+  display: block;
+}
+
+.rich-text-editor {
+  display: grid;
+  gap: 0;
+  width: 100%;
+}
+
+.rich-text-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: #f8f9fa;
+}
+
+.rich-text-tool {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.rich-text-tool:hover {
+  background: #f3f4f6;
+}
+
+.rich-text-tool.tool-bold {
+  font-weight: 700;
+}
+
+.rich-text-tool.tool-italic {
+  font-style: italic;
+}
+
+.rich-text-tool.tool-underline {
+  text-decoration: underline;
+}
+
+.rich-text-input {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid var(--line);
+  border-radius: 0 0 10px 10px;
+  padding: 0.65rem 0.7rem;
+  background: #fff;
+  overflow: auto;
+}
+
+.rich-text-input:focus {
+  outline: none;
+  border-color: var(--cta);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.rich-text-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.rich-text-input ul,
+.rich-text-input ol,
+.homework-notes ul,
+.homework-notes ol {
+  margin: 0.35rem 0 0.35rem 1.35rem;
+  padding: 0;
+}
+
+.rich-text-input p,
+.rich-text-input div,
+.homework-notes p,
+.homework-notes div {
+  margin: 0 0 0.35rem;
+}
+
+.homework-notes {
+  margin-top: 0.55rem;
+  line-height: 1.5;
+}
+
 .button {
   border: 1px solid var(--line);
   border-radius: 999px;

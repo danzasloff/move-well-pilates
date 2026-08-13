@@ -454,6 +454,113 @@ function createEl(tag, className, text) {
   return el;
 }
 
+const HOMEWORK_ALLOWED_TAGS = new Set(["BR", "DIV", "EM", "I", "LI", "OL", "P", "SPAN", "STRONG", "B", "U", "UL"]);
+const HOMEWORK_ALLOWED_TAG_PATTERN = /<\/?(br|div|em|i|li|ol|p|span|strong|b|u|ul)(\s|>|\/)/i;
+
+function sanitizeHomeworkHtml(value) {
+  const template = document.createElement("template");
+  template.innerHTML = String(value || "");
+
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent || "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return document.createDocumentFragment();
+    }
+
+    const tag = node.tagName.toUpperCase();
+    if (!HOMEWORK_ALLOWED_TAGS.has(tag)) {
+      const fragment = document.createDocumentFragment();
+      node.childNodes.forEach((child) => fragment.appendChild(cleanNode(child)));
+      return fragment;
+    }
+
+    const normalizedTag = tag === "B" ? "strong" : tag === "I" ? "em" : tag.toLowerCase();
+    const el = document.createElement(normalizedTag);
+    node.childNodes.forEach((child) => el.appendChild(cleanNode(child)));
+    return el;
+  };
+
+  const output = document.createElement("div");
+  template.content.childNodes.forEach((child) => output.appendChild(cleanNode(child)));
+  return output.innerHTML.trim();
+}
+
+function homeworkNotesToHtml(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (HOMEWORK_ALLOWED_TAG_PATTERN.test(raw)) {
+    return sanitizeHomeworkHtml(raw);
+  }
+  return raw
+    .split(/\n/)
+    .map((line) => {
+      const row = document.createElement("div");
+      row.textContent = line || "\u00a0";
+      return row.outerHTML;
+    })
+    .join("");
+}
+
+function homeworkNotesToPlainText(value) {
+  const box = document.createElement("div");
+  box.innerHTML = homeworkNotesToHtml(value);
+  return (box.innerText || box.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function getRichEditorHtml(editor) {
+  return sanitizeHomeworkHtml(editor?.innerHTML || "");
+}
+
+function createRichTextEditor(initialValue = "", placeholder = "") {
+  const wrap = createEl("div", "rich-text-editor");
+  const toolbar = createEl("div", "rich-text-toolbar");
+  toolbar.setAttribute("aria-label", "Homework formatting toolbar");
+
+  const editor = createEl("div", "rich-text-input");
+  editor.contentEditable = "true";
+  editor.setAttribute("role", "textbox");
+  editor.setAttribute("aria-multiline", "true");
+  editor.dataset.placeholder = placeholder;
+  editor.innerHTML = homeworkNotesToHtml(initialValue);
+
+  const commands = [
+    { command: "bold", label: "Bold", text: "B", className: "tool-bold" },
+    { command: "italic", label: "Italic", text: "I", className: "tool-italic" },
+    { command: "underline", label: "Underline", text: "U", className: "tool-underline" },
+    { command: "insertUnorderedList", label: "Bullet list", text: "Bullets" },
+    { command: "insertOrderedList", label: "Numbered list", text: "Numbered" },
+    { command: "removeFormat", label: "Clear formatting", text: "Clear" },
+  ];
+
+  commands.forEach(({ command, label, text, className }) => {
+    const button = createEl("button", `rich-text-tool ${className || ""}`.trim(), text);
+    button.type = "button";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", () => {
+      editor.focus();
+      document.execCommand(command, false, null);
+    });
+    toolbar.appendChild(button);
+  });
+
+  editor.addEventListener("paste", (event) => {
+    event.preventDefault();
+    const pastedText = event.clipboardData?.getData("text/plain") || "";
+    document.execCommand("insertText", false, pastedText);
+  });
+
+  wrap.append(toolbar, editor);
+  return {
+    wrap,
+    editor,
+    getHtml: () => getRichEditorHtml(editor),
+  };
+}
+
 function setButtonLoading(button, isLoading, loadingText = "Saving...") {
   if (!button) return;
   if (isLoading) {
@@ -1490,10 +1597,10 @@ function renderHomeworkSection(client) {
   const titleInput = createEl("input");
   titleLabel.appendChild(titleInput);
 
-  const instructorLabel = createEl("label", "full");
-  instructorLabel.textContent = "Homework Notes";
-  const instructorInput = createEl("textarea");
-  instructorLabel.appendChild(instructorInput);
+  const instructorLabel = createEl("div", "full rich-text-label");
+  instructorLabel.appendChild(createEl("span", "form-label-text", "Homework Notes"));
+  const instructorEditor = createRichTextEditor("", "Add homework notes, bullets, and formatting.");
+  instructorLabel.appendChild(instructorEditor.wrap);
 
   const videoLabel = createEl("label", "full");
   videoLabel.textContent = "Attach Video(s)";
@@ -1524,7 +1631,7 @@ function renderHomeworkSection(client) {
 
       await apiCreateHomework(client.id, {
         title: titleInput.value || "Homework",
-        notes: instructorInput.value,
+        notes: instructorEditor.getHtml(),
         videos,
         done: false,
       });
@@ -1545,13 +1652,16 @@ function renderHomeworkSection(client) {
       const card = createEl("article", "card");
       card.appendChild(createEl("strong", "", item.title));
 
-      const notesArea = createEl("textarea", "full");
-      notesArea.value = item.notes || item.instructorNotes || "";
-      notesArea.addEventListener("change", async () => {
-        const nextValue = notesArea.value;
+      const notesEditor = createRichTextEditor(item.notes || item.instructorNotes || "", "Edit homework notes.");
+      notesEditor.wrap.classList.add("full");
+      let savedNotesHtml = notesEditor.getHtml();
+      notesEditor.editor.addEventListener("blur", async () => {
+        const nextValue = notesEditor.getHtml();
+        if (nextValue === savedNotesHtml) return;
         item.notes = nextValue;
         try {
           await apiUpdateHomework(item.id, { notes: nextValue });
+          savedNotesHtml = nextValue;
           await refreshStateAndRender();
         } catch (err) {
           alert(err.message || "Failed to update homework notes.");
@@ -1561,7 +1671,8 @@ function renderHomeworkSection(client) {
 
       const meta = createEl("p", "meta", `Updated ${formatDate(item.updatedAt)}`);
       const actions = createEl("div", "card-actions");
-      const shareText = `${item.title}\n\nHomework:\n${item.notes || item.instructorNotes || ""}`;
+      const getCurrentShareNotesText = () => homeworkNotesToPlainText(notesEditor.getHtml());
+      const getCurrentShareText = () => `${item.title}\n\nHomework:\n${getCurrentShareNotesText()}`;
       if (!Array.isArray(item.videos)) item.videos = [];
 
       const existingVideos = createEl("div", "full");
@@ -1624,19 +1735,23 @@ function renderHomeworkSection(client) {
       attachWrap.append(attachInput, attachBtn);
 
       const emailLink = createEl("a", "button", "Share by Email");
-      const subject = encodeURIComponent(`Homework for ${client.name}`);
-      const body = encodeURIComponent(shareText);
-      emailLink.href = `mailto:${client.email || ""}?subject=${subject}&body=${body}`;
+      emailLink.addEventListener("click", () => {
+        const subject = encodeURIComponent(`Homework for ${client.name}`);
+        const body = encodeURIComponent(getCurrentShareText());
+        emailLink.href = `mailto:${client.email || ""}?subject=${subject}&body=${body}`;
+      });
 
       const textLink = createEl("a", "button", "Share by Text");
-      const smsBody = encodeURIComponent(`${item.title}: ${item.notes || item.instructorNotes || ""}`);
-      textLink.href = `sms:${client.phone || ""}?body=${smsBody}`;
+      textLink.addEventListener("click", () => {
+        const smsBody = encodeURIComponent(`${item.title}: ${getCurrentShareNotesText()}`);
+        textLink.href = `sms:${client.phone || ""}?body=${smsBody}`;
+      });
 
       const copyBtn = createEl("button", "button", "Copy Share Text");
       copyBtn.type = "button";
       copyBtn.addEventListener("click", async () => {
         try {
-          await navigator.clipboard.writeText(shareText);
+          await navigator.clipboard.writeText(getCurrentShareText());
           copyBtn.textContent = "Copied";
           setTimeout(() => {
             copyBtn.textContent = "Copy Share Text";
@@ -1676,7 +1791,7 @@ function renderHomeworkSection(client) {
         card.appendChild(createEl("p", "meta", "Status: Done"));
       }
 
-      card.append(notesArea, existingVideos, attachWrap, meta, actions);
+      card.append(notesEditor.wrap, existingVideos, attachWrap, meta, actions);
       list.appendChild(card);
     });
 }
