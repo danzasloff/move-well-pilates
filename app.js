@@ -516,7 +516,7 @@ function getRichEditorHtml(editor) {
 function createRichTextEditor(initialValue = "", placeholder = "") {
   const wrap = createEl("div", "rich-text-editor");
   const toolbar = createEl("div", "rich-text-toolbar");
-  toolbar.setAttribute("aria-label", "Homework formatting toolbar");
+  toolbar.setAttribute("aria-label", "Text formatting toolbar");
 
   const editor = createEl("div", "rich-text-input");
   editor.contentEditable = "true";
@@ -1177,16 +1177,17 @@ function renderVisitSection(client) {
   visitDateInput.value = toPacificDateInputValue();
   visitDateLabel.appendChild(visitDateInput);
 
-  const visitNotesLabel = createEl("label", "full");
-  visitNotesLabel.textContent = "Session Notes";
-  const visitNotesInput = createEl("textarea");
-  visitNotesLabel.appendChild(visitNotesInput);
+  const visitNotesLabel = createEl("div", "full rich-text-label");
+  visitNotesLabel.appendChild(createEl("span", "form-label-text", "Session Notes"));
+  const visitNotesEditor = createRichTextEditor("", "Add session notes, bullets, and formatting.");
+  visitNotesLabel.appendChild(visitNotesEditor.wrap);
 
   const addVisitBtn = createEl("button", "button primary", "Add Session Note");
   addVisitBtn.type = "button";
   addVisitBtn.classList.add("full", "fit-content-row-cta");
   addVisitBtn.addEventListener("click", async () => {
-    if (!String(visitNotesInput.value || "").trim()) {
+    const sessionNotesHtml = visitNotesEditor.getHtml();
+    if (!homeworkNotesToPlainText(sessionNotesHtml)) {
       alert("Please enter session notes before saving.");
       return;
     }
@@ -1194,7 +1195,7 @@ function renderVisitSection(client) {
     try {
       await apiCreateSessionNote(client.id, {
         date: visitDateInput.value || toPacificDateInputValue(),
-        notes: visitNotesInput.value || "",
+        notes: sessionNotesHtml,
         posturalAnalysisNotes: posturalNotesInput.value || "",
       });
       await refreshStateAndRender();
@@ -1268,7 +1269,7 @@ function renderVisitSection(client) {
     .filter((v) => {
       if (visitFilter.from && v.date < visitFilter.from) return false;
       if (visitFilter.to && v.date > visitFilter.to) return false;
-      if (visitFilter.query && !String(v.notes || "").toLowerCase().includes(visitFilter.query.toLowerCase())) return false;
+      if (visitFilter.query && !homeworkNotesToPlainText(v.notes || "").toLowerCase().includes(visitFilter.query.toLowerCase())) return false;
       return true;
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -1290,7 +1291,16 @@ function renderVisitSection(client) {
     filteredSessions.forEach((item) => {
       const row = createEl("tr");
       row.appendChild(createEl("td", "", formatDate(item.date)));
-      row.appendChild(createEl("td", "", item.notes || "No notes."));
+      const noteCell = createEl("td");
+      const noteBody = createEl("div", "homework-notes");
+      const noteHtml = homeworkNotesToHtml(item.notes || "");
+      if (noteHtml) {
+        noteBody.innerHTML = noteHtml;
+      } else {
+        noteBody.textContent = "No notes.";
+      }
+      noteCell.appendChild(noteBody);
+      row.appendChild(noteCell);
       row.appendChild(createEl("td", "", formatDate(item.createdAt)));
       const editCell = createEl("td");
       const editBtn = createEl("button", "text-link", "Edit");
@@ -2104,14 +2114,18 @@ function openSessionNoteEditDialog(sessionId) {
   const dialog = document.getElementById("session-note-edit-dialog");
   const form = document.getElementById("session-note-edit-form");
   const dateInput = document.getElementById("session-note-edit-date");
-  const notesInput = document.getElementById("session-note-edit-notes");
-  if (!dialog || !form || !dateInput || !notesInput) return;
+  const notesMount = document.getElementById("session-note-edit-notes");
+  if (!dialog || !form || !dateInput || !notesMount) return;
 
   const session = appState.visits.find((item) => item.id === sessionId);
   if (!session) return;
   form.dataset.sessionId = session.id;
   dateInput.value = session.date || "";
-  notesInput.value = session.notes || "";
+  notesMount.innerHTML = "";
+  const notesEditor = createRichTextEditor(session.notes || "", "Edit session note.");
+  notesEditor.wrap.classList.add("full");
+  notesMount.appendChild(notesEditor.wrap);
+  form.sessionNoteEditor = notesEditor;
   openDialog(dialog);
 }
 
@@ -2616,8 +2630,8 @@ function setupSessionNoteDialog() {
   const form = document.getElementById("session-note-edit-form");
   const cancelBtn = document.getElementById("session-note-edit-cancel-btn");
   const dateInput = document.getElementById("session-note-edit-date");
-  const notesInput = document.getElementById("session-note-edit-notes");
-  if (!dialog || !form || !cancelBtn || !dateInput || !notesInput) return;
+  const notesMount = document.getElementById("session-note-edit-notes");
+  if (!dialog || !form || !cancelBtn || !dateInput || !notesMount) return;
 
   cancelBtn.addEventListener("click", () => closeDialog(dialog));
   form.addEventListener("submit", async (event) => {
@@ -2628,9 +2642,10 @@ function setupSessionNoteDialog() {
     const submitBtn = form.querySelector('button[type="submit"]');
     setButtonLoading(submitBtn, true, "Saving...");
     try {
+      const notesHtml = form.sessionNoteEditor?.getHtml() || "";
       await apiUpdateSessionNote(sessionId, {
         date: dateInput.value || session.date,
-        notes: notesInput.value || "",
+        notes: notesHtml,
       });
       closeDialog(dialog);
       await refreshStateAndRender();

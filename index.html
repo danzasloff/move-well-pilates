@@ -199,7 +199,10 @@
       <form id="session-note-edit-form" class="dialog-form">
         <h3>Edit Session Note</h3>
         <label>Date <input id="session-note-edit-date" type="date" required /></label>
-        <label>Session Note <textarea id="session-note-edit-notes" required></textarea></label>
+        <div class="rich-text-label">
+          <span class="form-label-text">Session Note</span>
+          <div id="session-note-edit-notes"></div>
+        </div>
         <menu>
           <button id="session-note-edit-cancel-btn" type="button">Cancel</button>
           <button type="submit" class="button primary">Save</button>
