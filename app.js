@@ -9,6 +9,7 @@ const PACKAGE_TYPES = [
 const STORAGE_KEY = "moveWellClientTrackerV2";
 const ADMIN_TOKEN_KEY = "moveWellAdminToken";
 const PACIFIC_TIMEZONE = "America/Los_Angeles";
+const HISTORY_PAGE_SIZE = 10;
 let cloudSyncEnabled = true;
 let cloudSaveTimer = null;
 const TAB_LABELS = {
@@ -58,6 +59,9 @@ const appState = {
   ui: {
     visitFilters: {},
     visitCursor: {},
+    visitPages: {},
+    homeworkPages: {},
+    packagePages: {},
     posturalFilters: {},
     posturalCursor: {},
     activeTab: "overview",
@@ -104,6 +108,9 @@ function loadState() {
     if (!appState.ui) appState.ui = {};
     if (!appState.ui.visitFilters) appState.ui.visitFilters = {};
     if (!appState.ui.visitCursor) appState.ui.visitCursor = {};
+    if (!appState.ui.visitPages) appState.ui.visitPages = {};
+    if (!appState.ui.homeworkPages) appState.ui.homeworkPages = {};
+    if (!appState.ui.packagePages) appState.ui.packagePages = {};
     if (!appState.ui.posturalFilters) appState.ui.posturalFilters = {};
     if (!appState.ui.posturalCursor) appState.ui.posturalCursor = {};
     if (!TAB_LABELS[appState.ui.activeTab]) appState.ui.activeTab = "overview";
@@ -225,6 +232,20 @@ function getVisitCursor(clientId) {
     appState.ui.visitCursor[clientId] = 0;
   }
   return appState.ui.visitCursor[clientId];
+}
+
+function getHistoryPage(bucket, clientId) {
+  if (!appState.ui[bucket]) appState.ui[bucket] = {};
+  const page = Number(appState.ui[bucket][clientId]);
+  if (!Number.isInteger(page) || page < 1) {
+    appState.ui[bucket][clientId] = 1;
+  }
+  return appState.ui[bucket][clientId];
+}
+
+function setHistoryPage(bucket, clientId, page) {
+  if (!appState.ui[bucket]) appState.ui[bucket] = {};
+  appState.ui[bucket][clientId] = Math.max(1, Number(page) || 1);
 }
 
 function getPosturalFilter(clientId) {
@@ -452,6 +473,49 @@ function createEl(tag, className, text) {
   if (className) el.className = className;
   if (text !== undefined) el.textContent = text;
   return el;
+}
+
+function paginateHistory(items, bucket, clientId) {
+  const totalPages = Math.max(1, Math.ceil(items.length / HISTORY_PAGE_SIZE));
+  const page = Math.min(getHistoryPage(bucket, clientId), totalPages);
+  setHistoryPage(bucket, clientId, page);
+  const startIndex = (page - 1) * HISTORY_PAGE_SIZE;
+  return {
+    items: items.slice(startIndex, startIndex + HISTORY_PAGE_SIZE),
+    page,
+    totalPages,
+    startIndex,
+  };
+}
+
+function createPaginationControls({ page, totalPages, totalItems, startIndex, onPageChange }) {
+  if (totalItems <= HISTORY_PAGE_SIZE) return null;
+
+  const wrap = createEl("nav", "history-pagination");
+  wrap.setAttribute("aria-label", "History pages");
+  wrap.appendChild(
+    createEl(
+      "span",
+      "meta history-pagination-summary",
+      `Showing ${startIndex + 1}–${Math.min(startIndex + HISTORY_PAGE_SIZE, totalItems)} of ${totalItems}`
+    )
+  );
+
+  const actions = createEl("div", "history-pagination-actions");
+  const previousBtn = createEl("button", "button", "Previous");
+  previousBtn.type = "button";
+  previousBtn.disabled = page <= 1;
+  previousBtn.addEventListener("click", () => onPageChange(page - 1));
+
+  const pageLabel = createEl("span", "meta", `Page ${page} of ${totalPages}`);
+
+  const nextBtn = createEl("button", "button", "Next");
+  nextBtn.type = "button";
+  nextBtn.disabled = page >= totalPages;
+  nextBtn.addEventListener("click", () => onPageChange(page + 1));
+  actions.append(previousBtn, pageLabel, nextBtn);
+  wrap.appendChild(actions);
+  return wrap;
 }
 
 const HOMEWORK_ALLOWED_TAGS = new Set(["BR", "DIV", "EM", "I", "LI", "OL", "P", "SPAN", "STRONG", "B", "U", "UL"]);
@@ -1198,6 +1262,7 @@ function renderVisitSection(client) {
         notes: sessionNotesHtml,
         posturalAnalysisNotes: posturalNotesInput.value || "",
       });
+      setHistoryPage("visitPages", client.id, 1);
       await refreshStateAndRender();
     } catch (err) {
       alert(err.message || "Failed to add session note.");
@@ -1213,6 +1278,7 @@ function renderVisitSection(client) {
   visitFromInput.title = "Session Notes: From date";
   visitFromInput.addEventListener("change", () => {
     visitFilter.from = visitFromInput.value;
+    setHistoryPage("visitPages", client.id, 1);
     renderVisitSection(client);
   });
 
@@ -1222,6 +1288,7 @@ function renderVisitSection(client) {
   visitToInput.title = "Session Notes: To date";
   visitToInput.addEventListener("change", () => {
     visitFilter.to = visitToInput.value;
+    setHistoryPage("visitPages", client.id, 1);
     renderVisitSection(client);
   });
 
@@ -1233,6 +1300,7 @@ function renderVisitSection(client) {
   visitQueryInput.addEventListener("input", (event) => {
     const cursorPos = event.target.selectionStart;
     visitFilter.query = visitQueryInput.value;
+    setHistoryPage("visitPages", client.id, 1);
     renderVisitSection(client);
     const nextInput = document.getElementById("visit-search-notes");
     if (nextInput) {
@@ -1248,6 +1316,7 @@ function renderVisitSection(client) {
     visitFilter.from = "";
     visitFilter.to = "";
     visitFilter.query = "";
+    setHistoryPage("visitPages", client.id, 1);
     renderVisitSection(client);
   });
   visitFilterRow.append(visitFromInput, visitToInput, visitQueryInput, clearVisitBtn);
@@ -1277,6 +1346,7 @@ function renderVisitSection(client) {
   if (filteredSessions.length === 0) {
     sessionHistoryWrap.appendChild(createEl("p", "meta", "No session notes match these filters."));
   } else {
+    const paginatedSessions = paginateHistory(filteredSessions, "visitPages", client.id);
     const tableWrap = createEl("div", "resources-table-wrap");
     const table = createEl("table", "resources-table session-notes-table");
     const thead = createEl("thead");
@@ -1288,7 +1358,7 @@ function renderVisitSection(client) {
     table.appendChild(thead);
 
     const tbody = createEl("tbody");
-    filteredSessions.forEach((item) => {
+    paginatedSessions.items.forEach((item) => {
       const row = createEl("tr");
       row.appendChild(createEl("td", "", formatDate(item.date)));
       const noteCell = createEl("td");
@@ -1329,6 +1399,15 @@ function renderVisitSection(client) {
     table.appendChild(tbody);
     tableWrap.appendChild(table);
     sessionHistoryWrap.appendChild(tableWrap);
+    const pagination = createPaginationControls({
+      ...paginatedSessions,
+      totalItems: filteredSessions.length,
+      onPageChange: (page) => {
+        setHistoryPage("visitPages", client.id, page);
+        renderVisitSection(client);
+      },
+    });
+    if (pagination) sessionHistoryWrap.appendChild(pagination);
   }
   history.appendChild(sessionHistoryWrap);
 }
@@ -1433,6 +1512,7 @@ function renderSquarePaymentList(client) {
         amount,
         appState.settings.neverExpiresDefault
       );
+      setHistoryPage("packagePages", client.id, 1);
       saveState();
       render();
     });
@@ -1491,6 +1571,7 @@ function renderPackageSection(client) {
         purchaseDate: dateInput.value || toPacificDateInputValue(),
         neverExpires: neverExpiresInput.checked,
       });
+      setHistoryPage("packagePages", client.id, 1);
       await refreshStateAndRender();
     } catch (err) {
       alert(err.message || "Failed to record package purchase.");
@@ -1510,7 +1591,8 @@ function renderPackageSection(client) {
   form.append(typeLabel, dateLabel, neverExpiresLabel, addBtn);
 
   const { list } = packageSummary(client.id);
-  list.forEach((pkg) => {
+  const paginatedPackages = paginateHistory(list, "packagePages", client.id);
+  paginatedPackages.items.forEach((pkg) => {
     syncPackageUsage(pkg);
     const expiresAt = getPackageExpiresAt(pkg);
     const used = getPackageSessionsUsed(pkg);
@@ -1592,6 +1674,16 @@ function renderPackageSection(client) {
     history.appendChild(card);
   });
 
+  const pagination = createPaginationControls({
+    ...paginatedPackages,
+    totalItems: list.length,
+    onPageChange: (page) => {
+      setHistoryPage("packagePages", client.id, page);
+      renderPackageSection(client);
+    },
+  });
+  if (pagination) history.appendChild(pagination);
+
 }
 
 function renderHomeworkSection(client) {
@@ -1645,6 +1737,7 @@ function renderHomeworkSection(client) {
         videos,
         done: false,
       });
+      setHistoryPage("homeworkPages", client.id, 1);
       await refreshStateAndRender();
     } catch (err) {
       alert(err.message || "Failed to add homework.");
@@ -1655,12 +1748,48 @@ function renderHomeworkSection(client) {
 
   form.append(titleLabel, instructorLabel, videoLabel, addBtn);
 
-  appState.homework
+  const homeworkHistory = createEl("section", "card");
+  homeworkHistory.appendChild(createEl("strong", "", "Homework History"));
+  const homeworkItems = appState.homework
     .filter((h) => h.clientId === client.id)
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-    .forEach((item) => {
-      const card = createEl("article", "card");
-      card.appendChild(createEl("strong", "", item.title));
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  if (homeworkItems.length === 0) {
+    homeworkHistory.appendChild(createEl("p", "meta", "No homework has been added yet."));
+  } else {
+    const paginatedHomework = paginateHistory(homeworkItems, "homeworkPages", client.id);
+    const tableWrap = createEl("div", "resources-table-wrap");
+    const table = createEl("table", "resources-table homework-history-table");
+    const thead = createEl("thead");
+    const headRow = createEl("tr");
+    ["Homework", "Notes", "Updated", "Status", "Edit", "Delete"].forEach((heading) => {
+      headRow.appendChild(createEl("th", "", heading));
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = createEl("tbody");
+    paginatedHomework.items.forEach((item) => {
+      const row = createEl("tr");
+      row.appendChild(createEl("td", "", item.title || "Homework"));
+
+      const notesCell = createEl("td");
+      const notesPreview = createEl(
+        "div",
+        "homework-notes-preview",
+        homeworkNotesToPlainText(item.notes || item.instructorNotes || "") || "No notes."
+      );
+      notesPreview.title = notesPreview.textContent;
+      notesCell.appendChild(notesPreview);
+      row.appendChild(notesCell);
+      row.appendChild(createEl("td", "", formatDate(item.updatedAt)));
+      row.appendChild(createEl("td", "", item.done ? "Done" : "In Progress"));
+
+      const detailsRow = createEl("tr", "homework-details-row");
+      detailsRow.hidden = true;
+      const detailsCell = createEl("td");
+      detailsCell.colSpan = 6;
+      const card = createEl("div", "homework-history-editor");
 
       const notesEditor = createRichTextEditor(item.notes || item.instructorNotes || "", "Edit homework notes.");
       notesEditor.wrap.classList.add("full");
@@ -1784,26 +1913,60 @@ function renderHomeworkSection(client) {
         }
       });
 
-      const deleteBtn = createEl("button", "button", "Delete");
-      deleteBtn.type = "button";
-      deleteBtn.addEventListener("click", async () => {
-        try {
-          await apiDeleteHomework(item.id);
-          await refreshStateAndRender();
-        } catch (err) {
-          alert(err.message || "Failed to delete homework.");
-        }
-      });
-
-      actions.append(emailLink, textLink, copyBtn, doneBtn, deleteBtn);
+      actions.append(emailLink, textLink, copyBtn, doneBtn);
 
       if (item.done) {
         card.appendChild(createEl("p", "meta", "Status: Done"));
       }
 
       card.append(notesEditor.wrap, existingVideos, attachWrap, meta, actions);
-      list.appendChild(card);
+      detailsCell.appendChild(card);
+      detailsRow.appendChild(detailsCell);
+
+      const editCell = createEl("td");
+      const editBtn = createEl("button", "text-link", "Edit");
+      editBtn.type = "button";
+      editBtn.addEventListener("click", () => {
+        detailsRow.hidden = !detailsRow.hidden;
+        editBtn.textContent = detailsRow.hidden ? "Edit" : "Close";
+      });
+      editCell.appendChild(editBtn);
+      row.appendChild(editCell);
+
+      const deleteCell = createEl("td");
+      const deleteBtn = createEl("button", "text-link subdued", "Delete");
+      deleteBtn.type = "button";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`Delete the homework item “${item.title || "Homework"}”?`)) return;
+        deleteBtn.disabled = true;
+        try {
+          await apiDeleteHomework(item.id);
+          await refreshStateAndRender();
+        } catch (err) {
+          alert(err.message || "Failed to delete homework.");
+          deleteBtn.disabled = false;
+        }
+      });
+      deleteCell.appendChild(deleteBtn);
+      row.appendChild(deleteCell);
+
+      tbody.append(row, detailsRow);
     });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    homeworkHistory.appendChild(tableWrap);
+    const pagination = createPaginationControls({
+      ...paginatedHomework,
+      totalItems: homeworkItems.length,
+      onPageChange: (page) => {
+        setHistoryPage("homeworkPages", client.id, page);
+        renderHomeworkSection(client);
+      },
+    });
+    if (pagination) homeworkHistory.appendChild(pagination);
+  }
+
+  list.appendChild(homeworkHistory);
 }
 
 function renderFilesSection(client) {
