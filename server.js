@@ -548,6 +548,26 @@ app.get("/api/state", requireAdminAuth, async (req, res) => {
   }
 });
 
+app.get("/api/admin/backup", requireAdminAuth, async (req, res) => {
+  try {
+    const exportedAt = new Date().toISOString();
+    const state = normalizeAdminState(await readAppState());
+    const filenameDate = exportedAt.slice(0, 10);
+    const backup = {
+      format: "move-well-backup",
+      version: 1,
+      exportedAt,
+      state,
+    };
+
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Disposition", `attachment; filename="move-well-backup-${filenameDate}.json"`);
+    res.type("application/json").send(JSON.stringify(backup, null, 2));
+  } catch (err) {
+    res.status(500).json({ error: `Failed to create backup: ${err.message}` });
+  }
+});
+
 app.put("/api/state", requireAdminAuth, async (req, res) => {
   try {
     const { state } = req.body || {};

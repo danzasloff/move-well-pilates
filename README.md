@@ -83,6 +83,19 @@ After deployment:
 2. Open app in Browser B (or another computer), refresh.
 3. You should see the same data.
 
+## Backups
+
+- Paid Supabase projects create scheduled database backups automatically. Verify them under **Database → Backups** in the Supabase dashboard.
+- Administrators can also open **Settings → Download Backup** to save a dated JSON export of the current server-authoritative application state.
+- Backup exports contain client information and should be stored in a private, secure location.
+
+## Install on iPhone
+
+1. Open the production Move Well site in Safari.
+2. Tap **Share**.
+3. Tap **Add to Home Screen**.
+4. Launch Move Well from its Home Screen icon for the standalone app experience.
+
 ## Important Notes
 - This migration stores app state as JSON in Supabase table `app_states`.
 - Files/videos are included in shared state and sync across browsers.

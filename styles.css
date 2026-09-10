@@ -953,6 +953,16 @@ textarea {
   min-width: min(860px, 96vw);
 }
 
+.settings-action-card {
+  display: grid;
+  justify-items: start;
+  gap: 0.55rem;
+}
+
+.settings-action-card .meta {
+  margin: 0;
+}
+
 .file-viewer-form {
   min-width: min(980px, 96vw);
   max-width: 96vw;

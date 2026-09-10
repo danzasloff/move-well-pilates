@@ -720,6 +720,30 @@ async function apiFetch(path, options = {}) {
   }
 }
 
+async function downloadServerBackup() {
+  const res = await fetch("/api/admin/backup", {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Backup failed: ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = filenameMatch?.[1] || `move-well-backup-${toPacificDateInputValue()}.json`;
+  const url = URL.createObjectURL(blob);
+  const link = createEl("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function cancelPendingCloudSave() {
   if (!cloudSaveTimer) return;
   clearTimeout(cloudSaveTimer);
@@ -2535,6 +2559,44 @@ function renderSettingsForm() {
     <p class="meta">${summaryText}</p>
   `;
   form.appendChild(summary);
+
+  const backupCard = createEl("section", "card full settings-action-card");
+  backupCard.appendChild(createEl("strong", "", "Data Backup"));
+  backupCard.appendChild(
+    createEl(
+      "p",
+      "meta",
+      "Download a dated JSON copy of the current server database. Store it somewhere private because it contains client information."
+    )
+  );
+  const backupBtn = createEl("button", "button primary", "Download Backup");
+  backupBtn.type = "button";
+  backupBtn.addEventListener("click", async () => {
+    setButtonLoading(backupBtn, true, "Preparing...");
+    try {
+      await downloadServerBackup();
+    } catch (err) {
+      alert(err.message || "Failed to download backup.");
+    } finally {
+      setButtonLoading(backupBtn, false);
+    }
+  });
+  backupCard.appendChild(backupBtn);
+  form.appendChild(backupCard);
+
+  const installCard = createEl("section", "card full settings-action-card");
+  installCard.appendChild(createEl("strong", "", "Install on iPhone"));
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  installCard.appendChild(
+    createEl(
+      "p",
+      "meta",
+      isStandalone
+        ? "Move Well is installed and running as a Home Screen app."
+        : "On your iPhone, open Move Well in Safari, tap Share, then choose Add to Home Screen."
+    )
+  );
+  form.appendChild(installCard);
 }
 
 function render() {
@@ -3093,6 +3155,14 @@ async function init() {
     setAdminView(false);
     setAdminLoginError(err?.message || "Could not load app after login. Please try again.");
   }
+}
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch((err) => {
+      console.warn("Move Well offline shell could not be enabled.", err);
+    });
+  });
 }
 
 init();
