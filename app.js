@@ -10,6 +10,10 @@ const STORAGE_KEY = "moveWellClientTrackerV2";
 const ADMIN_TOKEN_KEY = "moveWellAdminToken";
 const PACIFIC_TIMEZONE = "America/Los_Angeles";
 const HISTORY_PAGE_SIZE = 10;
+const HEALTH_POLL_INTERVAL_MS = 45000;
+const HEALTH_RETRY_DELAY_MS = 5000;
+const HEALTH_FAILURE_THRESHOLD = 2;
+const HEALTH_REQUEST_TIMEOUT_MS = 12000;
 let cloudSyncEnabled = true;
 let cloudSaveTimer = null;
 const TAB_LABELS = {
@@ -94,6 +98,9 @@ let pendingSessionUsePackageId = null;
 let pendingSessionDateEdit = null;
 let pendingSessionUndoPackageId = null;
 let healthPollTimer = null;
+let healthRetryTimer = null;
+let healthCheckInFlight = null;
+let consecutiveHealthFailures = 0;
 
 function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -898,23 +905,85 @@ function renderSystemStatusBanner() {
   const reachable = appState.runtime.supabaseReachable;
   if (configured && !reachable) {
     el.hidden = false;
-    el.textContent = "Database is currently unavailable. Supabase may be paused. Please resume the Supabase project before making changes.";
+    el.textContent = "Connection temporarily interrupted. Showing saved information while we retry. Please wait before making changes.";
     return;
   }
   el.hidden = true;
   el.textContent = "";
 }
 
-async function refreshSystemHealth() {
+function scheduleHealthRetry() {
+  if (healthRetryTimer) return;
+  healthRetryTimer = setTimeout(() => {
+    healthRetryTimer = null;
+    refreshSystemHealth().catch(() => {});
+  }, HEALTH_RETRY_DELAY_MS);
+}
+
+async function performSystemHealthCheck() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), HEALTH_REQUEST_TIMEOUT_MS);
   try {
-    const health = await fetch("/api/health").then((res) => res.json());
+    const response = await fetch("/api/health", {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Health endpoint returned ${response.status}`);
+    const health = await response.json();
+    if (!health || health.ok !== true) throw new Error("Health endpoint returned an invalid response");
+
     appState.runtime.supabaseConfigured = !!health?.supabase;
-    appState.runtime.supabaseReachable = !!health?.supabaseReachable;
-  } catch {
-    appState.runtime.supabaseConfigured = true;
-    appState.runtime.supabaseReachable = false;
+    if (!health.supabase) {
+      consecutiveHealthFailures = 0;
+      appState.runtime.supabaseReachable = false;
+      if (healthRetryTimer) {
+        clearTimeout(healthRetryTimer);
+        healthRetryTimer = null;
+      }
+    } else if (health.supabaseReachable) {
+      consecutiveHealthFailures = 0;
+      appState.runtime.supabaseReachable = true;
+      if (healthRetryTimer) {
+        clearTimeout(healthRetryTimer);
+        healthRetryTimer = null;
+      }
+    } else {
+      consecutiveHealthFailures += 1;
+      console.warn("Database health check failed", {
+        attempt: consecutiveHealthFailures,
+        reason: health.supabaseHealth?.reason || "unknown",
+        durationMs: health.supabaseHealth?.durationMs,
+      });
+      if (consecutiveHealthFailures >= HEALTH_FAILURE_THRESHOLD) {
+        appState.runtime.supabaseReachable = false;
+      }
+      scheduleHealthRetry();
+    }
+  } catch (error) {
+    consecutiveHealthFailures += 1;
+    console.warn("Application health check failed", {
+      attempt: consecutiveHealthFailures,
+      reason: error?.name === "AbortError" ? "timeout" : error?.message || "request_error",
+    });
+    if (consecutiveHealthFailures >= HEALTH_FAILURE_THRESHOLD) {
+      appState.runtime.supabaseConfigured = true;
+      appState.runtime.supabaseReachable = false;
+    }
+    scheduleHealthRetry();
+  } finally {
+    clearTimeout(timeoutId);
   }
   renderSystemStatusBanner();
+}
+
+async function refreshSystemHealth() {
+  if (healthCheckInFlight) return healthCheckInFlight;
+  healthCheckInFlight = performSystemHealthCheck();
+  try {
+    await healthCheckInFlight;
+  } finally {
+    healthCheckInFlight = null;
+  }
 }
 
 function normalizeSquareAmount(payment) {
@@ -3135,7 +3204,7 @@ async function startApp() {
   if (!healthPollTimer) {
     healthPollTimer = setInterval(() => {
       refreshSystemHealth().catch(() => {});
-    }, 45000);
+    }, HEALTH_POLL_INTERVAL_MS);
   }
   render();
 }

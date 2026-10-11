@@ -1,9 +1,9 @@
-const CACHE_NAME = "move-well-shell-v1";
+const CACHE_NAME = "move-well-shell-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css?v=20260905a",
-  "/app.js?v=20260905a",
+  "/app.js?v=20261010a",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/icons/icon-192.png",

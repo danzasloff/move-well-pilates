@@ -40,6 +40,7 @@ const SQUARE_VERSION = process.env.SQUARE_VERSION || "2025-10-16";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SUPABASE_HEALTH_TIMEOUT_MS = 8000;
 const supabase =
   createClient && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -91,17 +92,43 @@ function hasSupabase() {
 }
 
 async function checkSupabaseReachable() {
-  if (!hasSupabase()) return false;
+  const startedAt = Date.now();
+  let timeoutId = null;
+  if (!hasSupabase()) {
+    return { reachable: false, reason: "not_configured", durationMs: 0 };
+  }
   try {
     const query = supabase.from("app_states").select("id").limit(1);
     const timeout = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("health check timeout")), 3500);
+      timeoutId = setTimeout(() => reject(new Error("health check timeout")), SUPABASE_HEALTH_TIMEOUT_MS);
     });
     const result = await Promise.race([query, timeout]);
-    if (!result || typeof result !== "object") return false;
-    return !result.error;
-  } catch {
-    return false;
+    const durationMs = Date.now() - startedAt;
+    if (!result || typeof result !== "object") {
+      console.warn("[health] Supabase returned an invalid response", { durationMs });
+      return { reachable: false, reason: "invalid_response", durationMs };
+    }
+    if (result.error) {
+      console.warn("[health] Supabase query failed", {
+        durationMs,
+        code: result.error.code || "",
+        status: result.status || result.error.status || "",
+        message: result.error.message || "query error",
+      });
+      return { reachable: false, reason: "query_error", durationMs };
+    }
+    return { reachable: true, reason: "ok", durationMs };
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const timedOut = error?.message === "health check timeout";
+    console.warn("[health] Supabase health check failed", {
+      durationMs,
+      reason: timedOut ? "timeout" : "request_error",
+      message: error?.message || "unknown error",
+    });
+    return { reachable: false, reason: timedOut ? "timeout" : "request_error", durationMs };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -451,11 +478,15 @@ function ensureSquareConfigured(res) {
 
 app.get("/api/health", async (req, res) => {
   const supabaseConfigured = hasSupabase();
-  const supabaseReachable = await checkSupabaseReachable();
+  const supabaseHealth = await checkSupabaseReachable();
   res.json({
     ok: true,
     supabase: supabaseConfigured,
-    supabaseReachable,
+    supabaseReachable: supabaseHealth.reachable,
+    supabaseHealth: {
+      reason: supabaseHealth.reason,
+      durationMs: supabaseHealth.durationMs,
+    },
     squareConfigured: !!(SQUARE_CLIENT_ID && SQUARE_CLIENT_SECRET),
     adminAuthConfigured: ADMIN_USERS.length > 0,
     smtpConfigured: smtpConfigured(),
