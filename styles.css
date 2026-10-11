@@ -1419,7 +1419,7 @@ h2,
 h3 {
   font-family: var(--heading-font);
   font-weight: 600;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 h2 { font-size: 1.8rem; }
@@ -1441,7 +1441,7 @@ h3 { font-size: 1.22rem; }
   font-family: var(--heading-font);
   font-size: 1rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .brand-mark {
@@ -1538,7 +1538,7 @@ main {
 
 .panel-title-row h2 {
   font-size: 1.65rem;
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .panel-kicker,
@@ -1830,7 +1830,7 @@ select:focus,
 
 .package-title-group { display: grid; gap: 0.18rem; }
 .package-status-label { color: var(--muted); font-size: 0.78rem; }
-.package-balance { font-size: 1.22rem; font-weight: 600; letter-spacing: -0.02em; }
+.package-balance { font-size: 1.22rem; font-weight: 600; letter-spacing: 0; }
 
 .status-badge {
   padding: 0.24rem 0.5rem;
@@ -2084,7 +2084,7 @@ dialog::backdrop { background: rgba(14, 31, 28, 0.34); backdrop-filter: blur(3px
 
 .section-heading h3 {
   font-size: 1.35rem;
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .section-heading-action {

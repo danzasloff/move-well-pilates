@@ -1,8 +1,8 @@
-const CACHE_NAME = "move-well-shell-v8-system-ui-type";
+const CACHE_NAME = "move-well-shell-v9-natural-heading-spacing";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20261010-calm-studio-6",
+  "/styles.css?v=20261010-calm-studio-7",
   "/app.js?v=20261010-calm-studio-4",
   "/manifest.webmanifest",
   "/favicon.svg",

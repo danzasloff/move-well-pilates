@@ -327,7 +327,7 @@ body {
   font-family: var(--heading-font);
   font-size: 1.15rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .brand-card h1 em { color: var(--muted); font-weight: 500; }
@@ -362,7 +362,7 @@ h2,
 h3 {
   font-family: var(--heading-font);
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 h2 { font-size: 1.7rem; }
