@@ -283,3 +283,152 @@ select:focus {
     align-items: stretch;
   }
 }
+
+/* Calm Studio client experience */
+:root {
+  --bg: #f4f2ed;
+  --panel: #fffdfa;
+  --ink: #17322e;
+  --muted: #687873;
+  --line: #dfe4df;
+  --line-strong: #cdd7d1;
+  --accent: #2f7169;
+  --accent-hover: #265f58;
+  --accent-soft: #e4f0ec;
+  --focus-ring: rgba(47, 113, 105, 0.18);
+  --heading-font: "DM Sans", "Segoe UI", sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(185, 213, 206, 0.42), transparent 32%),
+    var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 920px;
+  padding: clamp(1rem, 3vw, 2rem);
+  gap: 1rem;
+}
+
+.brand-card { padding: 1rem 0 1.4rem; }
+
+.brand-card h1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-family: var(--heading-font);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.brand-card h1 em { color: var(--muted); font-weight: 500; }
+
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  margin-right: 0.35rem;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+
+.brand-card p { margin-top: 0.45rem; font-size: 0.8rem; }
+
+.card {
+  padding: clamp(1rem, 2.5vw, 1.35rem);
+  border-color: var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 12px 36px rgba(23, 50, 46, 0.07);
+}
+
+.portal-auth-layout { gap: 1rem; }
+
+h2,
+h3 {
+  font-family: var(--heading-font);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+h2 { font-size: 1.7rem; }
+h3 { font-size: 1.2rem; }
+
+label { color: #405752; font-size: 0.8rem; font-weight: 600; }
+
+input,
+textarea,
+select {
+  min-height: 44px;
+  border-color: var(--line-strong);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  color: var(--ink);
+}
+
+input:focus,
+textarea:focus,
+select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.button {
+  min-height: 40px;
+  border-color: var(--line-strong);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.button.primary { border-color: var(--accent); background: var(--accent); }
+.button.primary:hover { background: var(--accent-hover); }
+.button:hover { background: #f5f4ef; }
+
+.portal-head { padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+.actions { margin: 1rem 0 2rem; }
+
+.section-block {
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line);
+}
+
+.section-block + .section-block { margin-top: 1.5rem; }
+
+.item {
+  padding: 0.9rem;
+  border-color: var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.item .meta { color: var(--muted); line-height: 1.5; }
+.hint { color: var(--muted); line-height: 1.5; }
+
+#new-client-request-dialog {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(23, 50, 46, 0.2);
+}
+
+#new-client-request-dialog::backdrop { background: rgba(14, 31, 28, 0.34); backdrop-filter: blur(3px); }
+
+@media (max-width: 760px) {
+  .page { padding: 0.8rem; }
+  .brand-card { padding: 0.7rem 0 1rem; }
+  .portal-head { flex-direction: row; align-items: center; }
+  #logout-btn { width: auto; }
+  .actions { display: grid; }
+}

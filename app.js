@@ -1126,9 +1126,19 @@ function openSessionHistoryDialog(pkg) {
 function clientCard(client) {
   const item = createEl("li", `client-item${client.id === appState.selectedClientId ? " active" : ""}`);
   item.tabIndex = 0;
+  const initials = String(client.name || "Client")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+  const avatar = createEl("span", "client-avatar", initials || "C");
+  const copy = createEl("span", "client-item-copy");
   const name = createEl("strong", "", client.name || "Unnamed Client");
   const detail = createEl("small", "", [client.email, client.phone].filter(Boolean).join(" | "));
-  item.append(name, detail);
+  copy.append(name, detail);
+  item.append(avatar, copy);
   item.addEventListener("click", () => {
     appState.selectedClientId = client.id;
     render();
@@ -1147,6 +1157,12 @@ function renderClientList() {
 
   filtered.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   filtered.forEach((client) => list.appendChild(clientCard(client)));
+  const count = document.getElementById("client-count");
+  if (count) {
+    count.textContent = query
+      ? `${filtered.length} of ${appState.clients.length} clients`
+      : `${appState.clients.length} ${appState.clients.length === 1 ? "client" : "clients"}`;
+  }
 }
 
 function renderAlerts(client) {
@@ -1691,8 +1707,25 @@ function renderPackageSection(client) {
     const used = getPackageSessionsUsed(pkg);
     const remaining = pkg.sessionsTotal - used;
     const useDates = Array.isArray(pkg.sessionUseDates) ? pkg.sessionUseDates : [];
-    const card = createEl("article", "card");
-    card.appendChild(createEl("strong", "", `${PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || pkg.type} | ${remaining}/${pkg.sessionsTotal} remaining`));
+    const isActivePackage = remaining > 0 && (!expiresAt || String(expiresAt).slice(0, 10) >= toPacificDateInputValue());
+    const card = createEl("article", `card package-card${isActivePackage ? " active-package" : ""}`);
+    const packageHeader = createEl("div", "package-card-header");
+    const packageTitle = createEl("div", "package-title-group");
+    packageTitle.appendChild(createEl("span", "package-status-label", isActivePackage ? "Active package" : "Package history"));
+    packageTitle.appendChild(createEl("strong", "package-balance", `${remaining} of ${pkg.sessionsTotal} sessions remaining`));
+    const packageBadge = createEl("span", `status-badge${isActivePackage ? " active" : ""}`, isActivePackage ? "Active" : "Completed");
+    packageHeader.append(packageTitle, packageBadge);
+    card.appendChild(packageHeader);
+    const progress = createEl("div", "package-progress");
+    progress.setAttribute("role", "progressbar");
+    progress.setAttribute("aria-label", `${used} of ${pkg.sessionsTotal} sessions used`);
+    progress.setAttribute("aria-valuemin", "0");
+    progress.setAttribute("aria-valuemax", String(pkg.sessionsTotal));
+    progress.setAttribute("aria-valuenow", String(used));
+    const progressBar = createEl("span", "package-progress-bar");
+    progressBar.style.width = `${pkg.sessionsTotal ? Math.min(100, (used / pkg.sessionsTotal) * 100) : 0}%`;
+    progress.appendChild(progressBar);
+    card.appendChild(progress);
     card.appendChild(
       createEl(
         "p",
@@ -2674,6 +2707,12 @@ function render() {
   const activeTab = appState.ui.activeTab || "overview";
   const topPage = appState.ui.topPage || "clients";
   document.getElementById("active-client-name").textContent = client ? client.name || "Unnamed Client" : "Select a client";
+  const clientContext = document.getElementById("active-client-context");
+  if (clientContext) {
+    clientContext.textContent = client
+      ? [client.email, client.phone].filter(Boolean).join(" · ") || "Private client workspace"
+      : "Choose a client to view their workspace";
+  }
   renderAlerts(client);
   renderClientForm(client);
   renderVisitSection(client);
