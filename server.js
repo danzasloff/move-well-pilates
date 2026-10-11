@@ -87,6 +87,42 @@ const PACKAGE_DEFS = {
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(__dirname));
 
+// The application state is stored as one JSON document. Serialize mutating API
+// requests so two devices cannot read the same snapshot and then overwrite one
+// another with competing whole-document writes.
+let stateMutationTail = Promise.resolve();
+app.use("/api", (req, res, next) => {
+  const mutatesAppState =
+    req.path === "/state" ||
+    /^\/clients(?:\/|$)/.test(req.path) ||
+    /^\/packages(?:\/|$)/.test(req.path) ||
+    /^\/homework(?:\/|$)/.test(req.path) ||
+    /^\/visits(?:\/|$)/.test(req.path);
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method) || !mutatesAppState) {
+    next();
+    return;
+  }
+
+  const previousMutation = stateMutationTail;
+  let releaseMutation;
+  const currentMutation = new Promise((resolve) => {
+    releaseMutation = resolve;
+  });
+  stateMutationTail = previousMutation.then(() => currentMutation, () => currentMutation);
+
+  previousMutation.then(() => {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      releaseMutation();
+    };
+    res.once("finish", release);
+    res.once("close", release);
+    next();
+  }, next);
+});
+
 function hasSupabase() {
   return !!supabase;
 }

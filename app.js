@@ -212,6 +212,12 @@ async function syncStateFromCloud() {
     const res = await fetch("/api/state", {
       headers: authHeaders(),
     });
+    if (res.status === 401) {
+      handleExpiredAdminSession();
+      const authError = new Error("Your session expired. Please sign in and try again.");
+      authError.code = "AUTH_EXPIRED";
+      throw authError;
+    }
     if (!res.ok) return;
     const payload = await res.json();
     const state = payload?.state;
@@ -222,7 +228,8 @@ async function syncStateFromCloud() {
     }
     normalizeSettingsState();
     saveState({ skipCloud: true });
-  } catch {
+  } catch (err) {
+    if (err?.code === "AUTH_EXPIRED") throw err;
     cloudSyncEnabled = false;
   }
 }
@@ -740,6 +747,17 @@ function authHeaders(extra = {}) {
   };
 }
 
+function handleExpiredAdminSession() {
+  adminToken = "";
+  clearAdminToken();
+  cloudSyncEnabled = true;
+  appStarted = false;
+  document.querySelectorAll("dialog[open]").forEach((dialog) => closeDialog(dialog));
+  setAdminView(false);
+  setAdminLoginStatus("");
+  setAdminLoginError("Your session expired after an app update. Please sign in and try that change again.");
+}
+
 async function apiFetch(path, options = {}) {
   try {
     const res = await fetch(path, {
@@ -750,6 +768,12 @@ async function apiFetch(path, options = {}) {
       },
     });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401 && path !== "/api/admin/login") {
+      handleExpiredAdminSession();
+      const authError = new Error("Your session expired. Please sign in and try again.");
+      authError.code = "AUTH_EXPIRED";
+      throw authError;
+    }
     if (!res.ok) {
       throw new Error(data.error || `Request failed: ${res.status}`);
     }
@@ -762,6 +786,21 @@ async function apiFetch(path, options = {}) {
     }
     throw err;
   }
+}
+
+function setDialogError(form, message) {
+  if (!form) return;
+  let errorEl = form.querySelector(".dialog-form-error");
+  if (!errorEl && message) {
+    errorEl = createEl("p", "dialog-form-error");
+    errorEl.setAttribute("role", "alert");
+    const actions = form.querySelector(".dialog-actions");
+    if (actions) form.insertBefore(errorEl, actions);
+    else form.appendChild(errorEl);
+  }
+  if (!errorEl) return;
+  errorEl.hidden = !message;
+  errorEl.textContent = message || "";
 }
 
 async function downloadServerBackup() {
@@ -3164,6 +3203,8 @@ function setupSessionUseDateDialog() {
   const submitBtn = document.getElementById("session-use-date-submit-btn");
   if (!dialog || !form || !input || !cancelBtn || !title || !submitBtn) return;
 
+  dialog.addEventListener("close", () => setDialogError(form, ""));
+
   cancelBtn.addEventListener("click", () => {
     pendingSessionUsePackageId = null;
     pendingSessionDateEdit = null;
@@ -3175,6 +3216,7 @@ function setupSessionUseDateDialog() {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setDialogError(form, "");
     if (!input.value) input.value = toPacificDateInputValue();
     if (!pendingSessionUsePackageId && !pendingSessionDateEdit && !pendingSessionUndoPackageId) {
       closeDialog(dialog);
@@ -3184,15 +3226,19 @@ function setupSessionUseDateDialog() {
 
     if (pendingSessionDateEdit) {
       const editRef = pendingSessionDateEdit;
-      pendingSessionDateEdit = null;
-      pendingSessionUsePackageId = null;
-      pendingSessionUndoPackageId = null;
       try {
         await apiEditPackageSessionDate(editRef.packageId, editRef.useIndex, input.value);
         await refreshStateAndRender();
       } catch (err) {
-        alert(err.message || "Failed to update session date.");
+        if (err?.code !== "AUTH_EXPIRED") {
+          setDialogError(form, `${err.message || "Failed to update session date."} This change was not saved. Please try again.`);
+        }
+        setButtonLoading(submitBtn, false);
+        return;
       }
+      pendingSessionDateEdit = null;
+      pendingSessionUsePackageId = null;
+      pendingSessionUndoPackageId = null;
       title.textContent = "Use 1 Session";
       delete submitBtn.dataset.originalText;
       submitBtn.textContent = "Use Session";
@@ -3205,15 +3251,19 @@ function setupSessionUseDateDialog() {
 
     if (pendingSessionUndoPackageId) {
       const undoPackageId = pendingSessionUndoPackageId;
-      pendingSessionUndoPackageId = null;
-      pendingSessionUsePackageId = null;
-      pendingSessionDateEdit = null;
       try {
         await apiUndoPackageSessionByDate(undoPackageId, input.value);
         await refreshStateAndRender();
       } catch (err) {
-        alert(err.message || "Failed to undo session.");
+        if (err?.code !== "AUTH_EXPIRED") {
+          setDialogError(form, `${err.message || "Failed to undo session."} This change was not saved. Please try again.`);
+        }
+        setButtonLoading(submitBtn, false);
+        return;
       }
+      pendingSessionUndoPackageId = null;
+      pendingSessionUsePackageId = null;
+      pendingSessionDateEdit = null;
       title.textContent = "Use 1 Session";
       delete submitBtn.dataset.originalText;
       submitBtn.textContent = "Use Session";
@@ -3223,8 +3273,6 @@ function setupSessionUseDateDialog() {
     }
 
     const packageId = pendingSessionUsePackageId;
-    pendingSessionUsePackageId = null;
-    pendingSessionUndoPackageId = null;
     if (!packageId) {
       closeDialog(dialog);
       return;
@@ -3233,8 +3281,14 @@ function setupSessionUseDateDialog() {
       await apiUsePackageSession(packageId, input.value);
       await refreshStateAndRender();
     } catch (err) {
-      alert(err.message || "Failed to record used session.");
+      if (err?.code !== "AUTH_EXPIRED") {
+        setDialogError(form, `${err.message || "Failed to record used session."} This session was not saved. Please try again.`);
+      }
+      setButtonLoading(submitBtn, false);
+      return;
     }
+    pendingSessionUsePackageId = null;
+    pendingSessionUndoPackageId = null;
     title.textContent = "Use 1 Session";
     delete submitBtn.dataset.originalText;
     submitBtn.textContent = "Use Session";
@@ -3385,6 +3439,7 @@ async function startApp() {
     return;
   }
   appStarted = true;
+  cloudSyncEnabled = true;
   loadState();
   await syncStateFromCloud();
   seedIfEmpty();
