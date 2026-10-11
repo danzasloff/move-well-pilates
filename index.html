@@ -11,10 +11,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261010-calm-studio" />
+    <link rel="stylesheet" href="styles.css?v=20261010-calm-studio-6" />
   </head>
   <body>
     <section id="admin-login-view" class="admin-login-view">
@@ -72,6 +69,9 @@
                 <input id="client-search" type="search" placeholder="Search clients" />
               </label>
             </div>
+            <label class="mobile-client-picker">Client
+              <select id="mobile-client-select" aria-label="Select client"></select>
+            </label>
             <ul id="client-list" class="client-list"></ul>
           </aside>
 
@@ -81,6 +81,7 @@
                 <h2 id="active-client-name">Select a client</h2>
                 <p id="active-client-context" class="panel-kicker">Choose a client to view their workspace</p>
               </div>
+              <button id="client-more-btn" class="button quiet-button client-more-btn" type="button" hidden>••• More</button>
             </div>
             <div class="mobile-tab-header">
               <span id="mobile-active-tab" class="mobile-active-tab-label">Overview</span>
@@ -241,6 +242,6 @@
     </footer>
     </div>
 
-    <script src="app.js?v=20261010-calm-studio"></script>
+    <script src="app.js?v=20261010-calm-studio-4"></script>
   </body>
 </html>

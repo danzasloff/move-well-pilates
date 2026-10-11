@@ -482,6 +482,43 @@ function createEl(tag, className, text) {
   return el;
 }
 
+function createSectionHeading(title, subtitle, actionText = "") {
+  const wrap = createEl("div", "section-heading full");
+  const copy = createEl("div", "section-heading-copy");
+  copy.append(createEl("h3", "", title), createEl("p", "meta", subtitle));
+  wrap.appendChild(copy);
+
+  let action = null;
+  if (actionText) {
+    action = createEl("button", "button section-heading-action", `+ ${actionText}`);
+    action.type = "button";
+    wrap.appendChild(action);
+  }
+  return { wrap, action };
+}
+
+function wireDisclosure(button, panel, openLabel, closeLabel = "Close") {
+  if (!button || !panel) return;
+  panel.hidden = true;
+  button.setAttribute("aria-expanded", "false");
+  button.addEventListener("click", () => {
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    button.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    button.textContent = willOpen ? closeLabel : `+ ${openLabel}`;
+    if (willOpen) {
+      const firstField = panel.querySelector("input, textarea, select, [contenteditable='true']");
+      firstField?.focus();
+    }
+  });
+}
+
+function createMetaItem(label, value) {
+  const item = createEl("div", "meta-item");
+  item.append(createEl("span", "meta-item-label", label), createEl("span", "meta-item-value", value));
+  return item;
+}
+
 function paginateHistory(items, bucket, clientId) {
   const totalPages = Math.max(1, Math.ceil(items.length / HISTORY_PAGE_SIZE));
   const page = Math.min(getHistoryPage(bucket, clientId), totalPages);
@@ -1163,6 +1200,27 @@ function renderClientList() {
       ? `${filtered.length} of ${appState.clients.length} clients`
       : `${appState.clients.length} ${appState.clients.length === 1 ? "client" : "clients"}`;
   }
+
+  const mobileSelect = document.getElementById("mobile-client-select");
+  if (mobileSelect) {
+    mobileSelect.innerHTML = "";
+    const placeholder = createEl("option", "", "Select a client");
+    placeholder.value = "";
+    mobileSelect.appendChild(placeholder);
+    appState.clients
+      .slice()
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+      .forEach((client) => {
+        const option = createEl("option", "", client.name || "Unnamed Client");
+        option.value = client.id;
+        mobileSelect.appendChild(option);
+      });
+    mobileSelect.value = appState.selectedClientId || "";
+    mobileSelect.onchange = () => {
+      appState.selectedClientId = mobileSelect.value || null;
+      render();
+    };
+  }
 }
 
 function renderAlerts(client) {
@@ -1192,9 +1250,10 @@ function renderAlerts(client) {
   if (!client) return;
 
   const { active } = packageSummary(client.id);
-  if (!active) {
+  const viewingPackages = (appState.ui.activeTab || "overview") === "packages";
+  if (!active && !viewingPackages) {
     alerts.appendChild(createEl("div", "alert", "No active package. Add a package purchase."));
-  } else {
+  } else if (active && !viewingPackages) {
     const remaining = active.sessionsTotal - getPackageSessionsUsed(active);
     if (remaining <= 1) {
       alerts.appendChild(createEl("div", "alert", `Only ${remaining} session left in active package.`));
@@ -1217,6 +1276,8 @@ function renderClientForm(client) {
     form.innerHTML = "<p>Select a client or create a new one.</p>";
     return;
   }
+
+  form.appendChild(createSectionHeading("Overview", "Contact details and health history").wrap);
 
   const fields = [
     ["name", "Name", "text"],
@@ -1312,17 +1373,13 @@ function renderVisitSection(client) {
   const history = document.getElementById("visit-history");
   form.innerHTML = "";
   history.innerHTML = "";
+  form.classList.add("calm-section-form");
   if (!client) return;
 
-  const sectionHeader = (text) => {
-    const label = createEl("p", "meta full", text);
-    label.style.fontWeight = "500";
-    label.style.margin = "0.4rem 0 0";
-    return label;
-  };
+  const heading = createSectionHeading("Visits", "Session notes and progress over time", "Add session note");
+  const composer = createEl("section", "creation-panel full");
 
-  const posturalHeader = sectionHeader("Postural Analysis");
-  const posturalNotesLabel = createEl("label", "full");
+  const posturalNotesLabel = createEl("label", "full assessment-editor");
   posturalNotesLabel.textContent = "Postural Analysis Notes";
   const posturalNotesInput = createEl("textarea");
   const latestLegacyPostural = appState.posturalAnalyses
@@ -1341,7 +1398,34 @@ function renderVisitSection(client) {
   });
   posturalNotesLabel.appendChild(posturalNotesInput);
 
-  const sessionHeader = sectionHeader("Session Notes");
+  const assessment = createEl("section", "assessment-card full");
+  const assessmentCopy = createEl("div");
+  assessmentCopy.append(
+    createEl("strong", "", "Postural analysis"),
+    createEl(
+      "p",
+      "meta",
+      latestLegacyPostural?.date || latestLegacyPostural?.createdAt
+        ? `Last updated ${formatDate(latestLegacyPostural.date || latestLegacyPostural.createdAt)}`
+        : posturalNotesInput.value
+          ? "Saved assessment"
+          : "No assessment recorded yet"
+    )
+  );
+  const assessmentBtn = createEl("button", "button quiet-button", posturalNotesInput.value ? "Edit assessment" : "Add assessment");
+  assessmentBtn.type = "button";
+  assessmentBtn.setAttribute("aria-expanded", "false");
+  const assessmentEditorWrap = createEl("div", "assessment-editor-wrap full");
+  assessmentEditorWrap.hidden = true;
+  assessmentEditorWrap.appendChild(posturalNotesLabel);
+  assessmentBtn.addEventListener("click", () => {
+    const willOpen = assessmentEditorWrap.hidden;
+    assessmentEditorWrap.hidden = !willOpen;
+    assessmentBtn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    assessmentBtn.textContent = willOpen ? "Close assessment" : posturalNotesInput.value ? "Edit assessment" : "Add assessment";
+    if (willOpen) posturalNotesInput.focus();
+  });
+  assessment.append(assessmentCopy, assessmentBtn, assessmentEditorWrap);
 
   const visitDateLabel = createEl("label");
   visitDateLabel.textContent = "Date";
@@ -1357,7 +1441,7 @@ function renderVisitSection(client) {
 
   const addVisitBtn = createEl("button", "button primary", "Add Session Note");
   addVisitBtn.type = "button";
-  addVisitBtn.classList.add("full", "fit-content-row-cta");
+  addVisitBtn.classList.add("fit-content-row-cta");
   addVisitBtn.addEventListener("click", async () => {
     const sessionNotesHtml = visitNotesEditor.getHtml();
     if (!homeworkNotesToPlainText(sessionNotesHtml)) {
@@ -1378,9 +1462,16 @@ function renderVisitSection(client) {
       setButtonLoading(addVisitBtn, false);
     }
   });
+  composer.append(visitDateLabel, visitNotesLabel, addVisitBtn);
+  wireDisclosure(heading.action, composer, "Add session note", "Close");
 
   const visitFilter = getVisitFilter(client.id);
-  const visitFilterRow = createEl("div", "card-actions full filter-row");
+  const visitFilterRow = createEl("div", "visit-filter-row full");
+  const makeFilterLabel = (text, input) => {
+    const label = createEl("label");
+    label.append(createEl("span", "", text), input);
+    return label;
+  };
   const visitFromInput = createEl("input");
   visitFromInput.type = "date";
   visitFromInput.value = visitFilter.from || "";
@@ -1428,20 +1519,16 @@ function renderVisitSection(client) {
     setHistoryPage("visitPages", client.id, 1);
     renderVisitSection(client);
   });
-  visitFilterRow.append(visitFromInput, visitToInput, visitQueryInput, clearVisitBtn);
-
-  form.append(
-    posturalHeader,
-    posturalNotesLabel,
-    sessionHeader,
-    visitDateLabel,
-    visitNotesLabel,
-    addVisitBtn,
-    visitFilterRow
+  visitFilterRow.append(
+    makeFilterLabel("From", visitFromInput),
+    makeFilterLabel("To", visitToInput),
+    makeFilterLabel("Search notes", visitQueryInput),
+    clearVisitBtn
   );
 
-  const sessionHistoryWrap = createEl("section", "card");
-  sessionHistoryWrap.appendChild(createEl("strong", "", "Session Notes History"));
+  form.append(heading.wrap, composer, assessment, visitFilterRow);
+
+  const sessionHistoryWrap = createEl("section", "history-section");
   const filteredSessions = appState.visits
     .filter((v) => v.clientId === client.id)
     .filter((v) => {
@@ -1452,26 +1539,22 @@ function renderVisitSection(client) {
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  const historyHeading = createSectionHeading(
+    "Session note history",
+    `${filteredSessions.length} ${filteredSessions.length === 1 ? "note" : "notes"} · newest first`
+  );
+  sessionHistoryWrap.appendChild(historyHeading.wrap);
+
   if (filteredSessions.length === 0) {
     sessionHistoryWrap.appendChild(createEl("p", "meta", "No session notes match these filters."));
   } else {
     const paginatedSessions = paginateHistory(filteredSessions, "visitPages", client.id);
-    const tableWrap = createEl("div", "resources-table-wrap");
-    const table = createEl("table", "resources-table session-notes-table");
-    const thead = createEl("thead");
-    const headRow = createEl("tr");
-    ["Date", "Session Note", "Created", "Edit", "Delete"].forEach((heading) => {
-      headRow.appendChild(createEl("th", "", heading));
-    });
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    const tbody = createEl("tbody");
+    const timeline = createEl("div", "visit-timeline");
     paginatedSessions.items.forEach((item) => {
-      const row = createEl("tr");
-      row.appendChild(createEl("td", "", formatDate(item.date)));
-      const noteCell = createEl("td");
-      const noteBody = createEl("div", "homework-notes");
+      const row = createEl("article", "visit-note-row");
+      row.appendChild(createEl("time", "visit-note-date", formatDate(item.date)));
+      const noteCell = createEl("div", "visit-note-copy");
+      const noteBody = createEl("div", "homework-notes visit-note-body");
       const noteHtml = homeworkNotesToHtml(item.notes || "");
       if (noteHtml) {
         noteBody.innerHTML = noteHtml;
@@ -1479,15 +1562,11 @@ function renderVisitSection(client) {
         noteBody.textContent = "No notes.";
       }
       noteCell.appendChild(noteBody);
-      row.appendChild(noteCell);
-      row.appendChild(createEl("td", "", formatDate(item.createdAt)));
-      const editCell = createEl("td");
+      noteCell.appendChild(createEl("span", "meta visit-note-created", `Created ${formatDate(item.createdAt)}`));
+      const actions = createEl("div", "visit-note-actions");
       const editBtn = createEl("button", "text-link", "Edit");
       editBtn.type = "button";
       editBtn.addEventListener("click", () => openSessionNoteEditDialog(item.id));
-      editCell.appendChild(editBtn);
-      row.appendChild(editCell);
-      const deleteCell = createEl("td");
       const deleteBtn = createEl("button", "text-link subdued", "Delete");
       deleteBtn.type = "button";
       deleteBtn.addEventListener("click", async () => {
@@ -1501,13 +1580,11 @@ function renderVisitSection(client) {
           deleteBtn.disabled = false;
         }
       });
-      deleteCell.appendChild(deleteBtn);
-      row.appendChild(deleteCell);
-      tbody.appendChild(row);
+      actions.append(editBtn, deleteBtn);
+      row.append(noteCell, actions);
+      timeline.appendChild(row);
     });
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
-    sessionHistoryWrap.appendChild(tableWrap);
+    sessionHistoryWrap.appendChild(timeline);
     const pagination = createPaginationControls({
       ...paginatedSessions,
       totalItems: filteredSessions.length,
@@ -1638,6 +1715,7 @@ function renderPackageSection(client) {
   const history = document.getElementById("package-history");
   form.innerHTML = "";
   history.innerHTML = "";
+  form.classList.add("calm-section-form");
 
   if (!client) {
     return;
@@ -1697,46 +1775,20 @@ function renderPackageSection(client) {
     await submitPackagePurchase();
   });
 
-  form.append(typeLabel, dateLabel, neverExpiresLabel, addBtn);
+  const heading = createSectionHeading("Packages", "Session balance and purchase history", "Add package");
+  const purchasePanel = createEl("section", "creation-panel package-purchase-panel full");
+  purchasePanel.append(typeLabel, dateLabel, neverExpiresLabel, addBtn);
+  wireDisclosure(heading.action, purchasePanel, "Add package", "Close");
+  form.append(heading.wrap, purchasePanel);
 
-  const { list } = packageSummary(client.id);
-  const paginatedPackages = paginateHistory(list, "packagePages", client.id);
-  paginatedPackages.items.forEach((pkg) => {
+  const createPackageActions = (pkg, activeLayout = false) => {
     syncPackageUsage(pkg);
-    const expiresAt = getPackageExpiresAt(pkg);
     const used = getPackageSessionsUsed(pkg);
     const remaining = pkg.sessionsTotal - used;
     const useDates = Array.isArray(pkg.sessionUseDates) ? pkg.sessionUseDates : [];
-    const isActivePackage = remaining > 0 && (!expiresAt || String(expiresAt).slice(0, 10) >= toPacificDateInputValue());
-    const card = createEl("article", `card package-card${isActivePackage ? " active-package" : ""}`);
-    const packageHeader = createEl("div", "package-card-header");
-    const packageTitle = createEl("div", "package-title-group");
-    packageTitle.appendChild(createEl("span", "package-status-label", isActivePackage ? "Active package" : "Package history"));
-    packageTitle.appendChild(createEl("strong", "package-balance", `${remaining} of ${pkg.sessionsTotal} sessions remaining`));
-    const packageBadge = createEl("span", `status-badge${isActivePackage ? " active" : ""}`, isActivePackage ? "Active" : "Completed");
-    packageHeader.append(packageTitle, packageBadge);
-    card.appendChild(packageHeader);
-    const progress = createEl("div", "package-progress");
-    progress.setAttribute("role", "progressbar");
-    progress.setAttribute("aria-label", `${used} of ${pkg.sessionsTotal} sessions used`);
-    progress.setAttribute("aria-valuemin", "0");
-    progress.setAttribute("aria-valuemax", String(pkg.sessionsTotal));
-    progress.setAttribute("aria-valuenow", String(used));
-    const progressBar = createEl("span", "package-progress-bar");
-    progressBar.style.width = `${pkg.sessionsTotal ? Math.min(100, (used / pkg.sessionsTotal) * 100) : 0}%`;
-    progress.appendChild(progressBar);
-    card.appendChild(progress);
-    card.appendChild(
-      createEl(
-        "p",
-        "meta",
-        `Purchased ${formatDate(pkg.purchaseDate)} | Expires ${expiresAt ? formatDate(expiresAt) : "Never"} | Total ${formatMoney(pkg.total)}${pkg.squarePaymentId ? ` | Square: ${pkg.squarePaymentId}` : ""}`
-      )
-    );
-    card.appendChild(createEl("p", "meta", `Sessions marked used: ${used}`));
-
-    const actions = createEl("div", "card-actions");
+    const actions = createEl("div", activeLayout ? "card-actions active-package-actions" : "table-actions");
     const useBtn = createEl("button", "button", "Use 1 Session");
+    if (activeLayout) useBtn.textContent = "Use a session";
     useBtn.type = "button";
     useBtn.disabled = remaining <= 0;
     useBtn.addEventListener("click", () => {
@@ -1754,7 +1806,7 @@ function renderPackageSection(client) {
       openDialog(dialog);
     });
 
-    const unuseBtn = createEl("button", "button", "Undo Session");
+    const unuseBtn = createEl("button", activeLayout ? "button quiet-button" : "button", activeLayout ? "Undo last use" : "Undo");
     unuseBtn.type = "button";
     unuseBtn.disabled = used <= 0;
     unuseBtn.addEventListener("click", () => {
@@ -1773,7 +1825,7 @@ function renderPackageSection(client) {
       openDialog(dialog);
     });
 
-    const historyBtn = createEl("button", "button", "Session Usage History");
+    const historyBtn = createEl("button", "button", activeLayout ? "View history" : "History");
     historyBtn.type = "button";
     historyBtn.addEventListener("click", () => openSessionHistoryDialog(pkg));
 
@@ -1795,14 +1847,89 @@ function renderPackageSection(client) {
       }
     });
 
-    actions.append(useBtn, unuseBtn, historyBtn, deletePkgBtn);
-    card.appendChild(actions);
+    if (activeLayout) actions.append(useBtn, historyBtn, unuseBtn, deletePkgBtn);
+    else actions.append(useBtn, historyBtn, unuseBtn, deletePkgBtn);
+    return actions;
+  };
+
+  const { list, active } = packageSummary(client.id);
+  if (active) {
+    syncPackageUsage(active);
+    const expiresAt = getPackageExpiresAt(active);
+    const used = getPackageSessionsUsed(active);
+    const remaining = active.sessionsTotal - used;
+    const packageLabel = PACKAGE_TYPES.find((p) => p.key === active.type)?.label || active.type;
+    const card = createEl("article", "card package-card active-package");
+    const packageHeader = createEl("div", "package-card-header");
+    const packageTitle = createEl("div", "package-title-group");
+    packageTitle.append(
+      createEl("span", "package-status-label", `Active ${String(packageLabel).toLowerCase()}`),
+      createEl("strong", "package-balance", `${remaining} ${remaining === 1 ? "session" : "sessions"} remaining`)
+    );
+    packageHeader.append(packageTitle, createEl("span", "status-badge active", "Active"));
+    const progress = createEl("div", "package-progress");
+    progress.setAttribute("role", "progressbar");
+    progress.setAttribute("aria-label", `${used} of ${active.sessionsTotal} sessions used`);
+    progress.setAttribute("aria-valuemin", "0");
+    progress.setAttribute("aria-valuemax", String(active.sessionsTotal));
+    progress.setAttribute("aria-valuenow", String(used));
+    const progressBar = createEl("span", "package-progress-bar");
+    progressBar.style.width = `${active.sessionsTotal ? Math.min(100, (used / active.sessionsTotal) * 100) : 0}%`;
+    progress.appendChild(progressBar);
+    const metaGrid = createEl("div", "package-meta-grid");
+    metaGrid.append(
+      createMetaItem("Purchased", formatDate(active.purchaseDate)),
+      createMetaItem("Expiration", expiresAt ? formatDate(expiresAt) : "Never expires"),
+      createMetaItem("Package total", formatMoney(active.total))
+    );
+    card.append(packageHeader, progress, metaGrid, createPackageActions(active, true));
     history.appendChild(card);
-  });
+  } else {
+    const empty = createEl("section", "empty-state");
+    empty.append(createEl("strong", "", "No active package"), createEl("p", "meta", "Add a package purchase to begin tracking sessions."));
+    history.appendChild(empty);
+  }
+
+  const previousPackages = list.filter((pkg) => !active || pkg.id !== active.id);
+  const previousHeading = createSectionHeading(
+    "Previous packages",
+    `${previousPackages.length} completed or inactive ${previousPackages.length === 1 ? "purchase" : "purchases"}`
+  );
+  history.appendChild(previousHeading.wrap);
+  const paginatedPackages = paginateHistory(previousPackages, "packagePages", client.id);
+  if (previousPackages.length) {
+    const tableWrap = createEl("div", "resources-table-wrap package-history-table-wrap");
+    const table = createEl("table", "resources-table package-history-table");
+    const thead = createEl("thead");
+    const headRow = createEl("tr");
+    ["Package", "Purchased", "Used", "Total", "Actions"].forEach((label) => headRow.appendChild(createEl("th", "", label)));
+    thead.appendChild(headRow);
+    const tbody = createEl("tbody");
+    paginatedPackages.items.forEach((pkg) => {
+      syncPackageUsage(pkg);
+      const used = getPackageSessionsUsed(pkg);
+      const row = createEl("tr");
+      row.append(
+        createEl("td", "", PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || pkg.type),
+        createEl("td", "", formatDate(pkg.purchaseDate)),
+        createEl("td", "tabular-nums", `${used} / ${pkg.sessionsTotal}`),
+        createEl("td", "tabular-nums", formatMoney(pkg.total))
+      );
+      const actionCell = createEl("td");
+      actionCell.appendChild(createPackageActions(pkg));
+      row.appendChild(actionCell);
+      tbody.appendChild(row);
+    });
+    table.append(thead, tbody);
+    tableWrap.appendChild(table);
+    history.appendChild(tableWrap);
+  } else {
+    history.appendChild(createEl("p", "meta", "No previous packages yet."));
+  }
 
   const pagination = createPaginationControls({
     ...paginatedPackages,
-    totalItems: list.length,
+    totalItems: previousPackages.length,
     onPageChange: (page) => {
       setHistoryPage("packagePages", client.id, page);
       renderPackageSection(client);
@@ -1817,6 +1944,7 @@ function renderHomeworkSection(client) {
   const list = document.getElementById("homework-list");
   form.innerHTML = "";
   list.innerHTML = "";
+  form.classList.add("calm-section-form");
   if (!client) return;
 
   const titleLabel = createEl("label");
@@ -1872,13 +2000,23 @@ function renderHomeworkSection(client) {
     }
   });
 
-  form.append(titleLabel, instructorLabel, videoLabel, addBtn);
+  const heading = createSectionHeading("Homework", "Assignments, instructions, and shared videos", "Add homework");
+  const composer = createEl("section", "creation-panel homework-composer full");
+  composer.append(titleLabel, instructorLabel, videoLabel, addBtn);
+  wireDisclosure(heading.action, composer, "Add homework", "Close");
+  form.append(heading.wrap, composer);
 
-  const homeworkHistory = createEl("section", "card");
-  homeworkHistory.appendChild(createEl("strong", "", "Homework History"));
+  const homeworkHistory = createEl("section", "history-section");
   const homeworkItems = appState.homework
     .filter((h) => h.clientId === client.id)
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  homeworkHistory.appendChild(
+    createSectionHeading(
+      "Homework history",
+      `${homeworkItems.length} ${homeworkItems.length === 1 ? "assignment" : "assignments"} · newest first`
+    ).wrap
+  );
 
   if (homeworkItems.length === 0) {
     homeworkHistory.appendChild(createEl("p", "meta", "No homework has been added yet."));
@@ -2100,6 +2238,7 @@ function renderFilesSection(client) {
   const list = document.getElementById("files-list");
   form.innerHTML = "";
   list.innerHTML = "";
+  form.classList.add("calm-section-form");
   if (!client) return;
 
   const pickerLabel = createEl("label", "full");
@@ -2136,13 +2275,22 @@ function renderFilesSection(client) {
     renderFilesSection(client);
   });
 
-  form.append(pickerLabel, note, uploadBtn);
+  const heading = createSectionHeading("Files", "Documents, images, and client attachments", "Upload files");
+  const uploadPanel = createEl("section", "creation-panel file-upload-panel full");
+  uploadPanel.append(pickerLabel, note, uploadBtn);
+  wireDisclosure(heading.action, uploadPanel, "Upload files", "Close");
+  form.append(heading.wrap, uploadPanel);
 
-  appState.files
+  const files = appState.files
     .filter((f) => f.clientId === client.id)
-    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
-    .forEach((file) => {
-      const card = createEl("article", "card");
+    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+
+  list.appendChild(
+    createSectionHeading("File library", `${files.length} ${files.length === 1 ? "file" : "files"}`).wrap
+  );
+
+  files.forEach((file) => {
+      const card = createEl("article", "card file-card");
       const metaRow = createEl("p", "meta file-meta-row");
       const fileName = createEl("span", "file-name-inline", file.name);
       const fileDetails = createEl("span", "file-detail-inline", `| ${formatBytes(file.size)} | Uploaded ${formatDate(file.uploadedAt)}`);
@@ -2162,7 +2310,7 @@ function renderFilesSection(client) {
       openLink.rel = "noopener";
       openLink.download = file.name;
 
-      const deleteBtn = createEl("button", "button", "Delete File");
+      const deleteBtn = createEl("button", "text-link subdued", "Delete");
       deleteBtn.type = "button";
       deleteBtn.addEventListener("click", () => {
         if (!confirm(`Delete file "${file.name}"?`)) return;
@@ -2176,7 +2324,7 @@ function renderFilesSection(client) {
       list.appendChild(card);
     });
 
-  if (list.children.length === 0) {
+  if (files.length === 0) {
     list.appendChild(createEl("p", "meta", "No files uploaded for this client."));
   }
 }
@@ -2186,6 +2334,7 @@ function renderResourcesSection() {
   const list = document.getElementById("resources-list");
   form.innerHTML = "";
   list.innerHTML = "";
+  form.classList.add("calm-section-form");
 
   const pickerLabel = createEl("label", "full");
   pickerLabel.textContent = "Upload resource file(s)";
@@ -2253,7 +2402,11 @@ function renderResourcesSection() {
     renderResourcesSection();
   });
 
-  form.append(pickerLabel, uploadBtn, linkTitleLabel, linkUrlLabel, addLinkBtn);
+  const heading = createSectionHeading("Resource library", "Files and links available to share with clients", "Add resource");
+  const composer = createEl("section", "creation-panel resource-composer full");
+  composer.append(pickerLabel, uploadBtn, linkTitleLabel, linkUrlLabel, addLinkBtn);
+  wireDisclosure(heading.action, composer, "Add resource", "Close");
+  form.append(heading.wrap, composer);
 
   const resources = appState.resources
     .slice()
@@ -2558,6 +2711,7 @@ function renderSettingsForm() {
   if (!form || !squareCard) return;
   form.innerHTML = "";
   squareCard.innerHTML = "";
+  form.appendChild(createSectionHeading("Business defaults", "Pricing, tax, and package behavior").wrap);
 
   const title = createEl("strong", "", "Square Connection");
   const status = createEl("p", "meta", appState.square.statusMessage || "Checking status...");
@@ -2663,6 +2817,7 @@ function renderSettingsForm() {
   form.appendChild(summary);
 
   const backupCard = createEl("section", "card full settings-action-card");
+  form.appendChild(createSectionHeading("Data and devices", "Backup and installation tools").wrap);
   backupCard.appendChild(createEl("strong", "", "Data Backup"));
   backupCard.appendChild(
     createEl(
@@ -2709,10 +2864,13 @@ function render() {
   document.getElementById("active-client-name").textContent = client ? client.name || "Unnamed Client" : "Select a client";
   const clientContext = document.getElementById("active-client-context");
   if (clientContext) {
+    const activeYear = client?.createdAt ? new Date(client.createdAt).getFullYear() : null;
     clientContext.textContent = client
-      ? [client.email, client.phone].filter(Boolean).join(" · ") || "Private client workspace"
+      ? `Private client${activeYear ? ` · Active since ${activeYear}` : ""}`
       : "Choose a client to view their workspace";
   }
+  const moreBtn = document.getElementById("client-more-btn");
+  if (moreBtn) moreBtn.hidden = !client;
   renderAlerts(client);
   renderClientForm(client);
   renderVisitSection(client);
@@ -2729,6 +2887,7 @@ function render() {
 function setActiveTab(tabKey) {
   const activeKey = TAB_LABELS[tabKey] ? tabKey : "overview";
   appState.ui.activeTab = activeKey;
+  renderAlerts(selectedClient());
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === activeKey);
   });
@@ -2775,6 +2934,13 @@ function setupTabs() {
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
   });
+  const moreBtn = document.getElementById("client-more-btn");
+  if (moreBtn) {
+    moreBtn.addEventListener("click", () => {
+      setActiveTab("overview");
+      document.getElementById("client-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
   if (menuBtn && tabRow) {
     menuBtn.addEventListener("click", () => {
       const open = tabRow.classList.toggle("mobile-open");

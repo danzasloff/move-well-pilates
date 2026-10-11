@@ -1,9 +1,9 @@
-const CACHE_NAME = "move-well-shell-v3-calm-studio";
+const CACHE_NAME = "move-well-shell-v8-system-ui-type";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20261010-calm-studio",
-  "/app.js?v=20261010-calm-studio",
+  "/styles.css?v=20261010-calm-studio-6",
+  "/app.js?v=20261010-calm-studio-4",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/icons/icon-192.png",
