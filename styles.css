@@ -2215,6 +2215,8 @@ dialog::backdrop { background: rgba(14, 31, 28, 0.34); backdrop-filter: blur(3px
 }
 
 .visit-timeline {
+  --timeline-axis: 4px;
+  --timeline-dot-size: 8px;
   position: relative;
   display: grid;
   padding-left: 1.1rem;
@@ -2223,9 +2225,9 @@ dialog::backdrop { background: rgba(14, 31, 28, 0.34); backdrop-filter: blur(3px
 .visit-timeline::before {
   content: "";
   position: absolute;
-  top: 0.85rem;
-  bottom: 0.85rem;
-  left: 4px;
+  top: calc(1.15rem + (var(--timeline-dot-size) / 2));
+  bottom: 0;
+  left: var(--timeline-axis);
   width: 1px;
   background: var(--line-strong);
 }
@@ -2236,20 +2238,28 @@ dialog::backdrop { background: rgba(14, 31, 28, 0.34); backdrop-filter: blur(3px
   grid-template-columns: 120px minmax(0, 1fr) auto;
   gap: 1rem;
   padding: 0.9rem 0;
-  border-bottom: 1px solid var(--line);
+}
+
+.visit-note-row::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: calc(-1.1rem + var(--timeline-axis));
+  height: 1px;
+  background: var(--line);
 }
 
 .visit-note-row::before {
   content: "";
   position: absolute;
-  top: 1.2rem;
-  left: calc(-1.1rem + 1px);
-  width: 7px;
-  height: 7px;
-  border: 2px solid var(--panel);
+  z-index: 1;
+  top: 1.15rem;
+  left: calc(-1.1rem + var(--timeline-axis) - (var(--timeline-dot-size) / 2));
+  width: var(--timeline-dot-size);
+  height: var(--timeline-dot-size);
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .visit-note-date {
@@ -2415,6 +2425,8 @@ main {
 }
 
 #clients-page .clients-panel {
+  top: 64px;
+  max-height: calc(100vh - 64px);
   padding: 1.25rem 1rem;
   border-right-color: var(--line-strong);
 }
