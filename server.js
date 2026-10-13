@@ -267,6 +267,13 @@ function packageSessionsUsed(pkg) {
 function syncPackageUsage(pkg) {
   if (!pkg) return;
   if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+  if (!Array.isArray(pkg.sessionUseLateCancellations)) pkg.sessionUseLateCancellations = [];
+  pkg.sessionUseLateCancellations = pkg.sessionUseLateCancellations
+    .slice(0, pkg.sessionUseDates.length)
+    .map(Boolean);
+  while (pkg.sessionUseLateCancellations.length < pkg.sessionUseDates.length) {
+    pkg.sessionUseLateCancellations.push(false);
+  }
   pkg.sessionsUsed = packageSessionsUsed(pkg);
 }
 
@@ -908,6 +915,7 @@ app.post("/api/packages", requireAdminAuth, async (req, res) => {
       sessionsTotal: pkgDef.sessions,
       sessionsUsed: 0,
       sessionUseDates: [],
+      sessionUseLateCancellations: [],
       purchaseDate: dateRaw,
       neverExpires: Boolean(neverExpires),
       preTax,
@@ -928,6 +936,7 @@ app.post("/api/packages/:packageId/use-session", requireAdminAuth, async (req, r
   try {
     const packageId = String(req.params.packageId || "");
     const dateRaw = String(req.body?.date || "").trim();
+    const lateCancellation = Boolean(req.body?.lateCancellation);
     if (!packageId) {
       res.status(400).json({ error: "Package id is required." });
       return;
@@ -949,6 +958,7 @@ app.post("/api/packages/:packageId/use-session", requireAdminAuth, async (req, r
       return;
     }
     pkg.sessionUseDates.push(toIsoNoon(dateRaw));
+    pkg.sessionUseLateCancellations.push(lateCancellation);
     syncPackageUsage(pkg);
     await writeAppState(state);
     res.json({ ok: true, package: pkg });
@@ -962,6 +972,7 @@ app.post("/api/packages/:packageId/edit-session-date", requireAdminAuth, async (
     const packageId = String(req.params.packageId || "");
     const useIndex = Number(req.body?.useIndex);
     const dateRaw = String(req.body?.date || "").trim();
+    const lateCancellation = Boolean(req.body?.lateCancellation);
     if (!packageId) {
       res.status(400).json({ error: "Package id is required." });
       return;
@@ -987,6 +998,8 @@ app.post("/api/packages/:packageId/edit-session-date", requireAdminAuth, async (
       return;
     }
     pkg.sessionUseDates[useIndex] = toIsoNoon(dateRaw);
+    syncPackageUsage(pkg);
+    pkg.sessionUseLateCancellations[useIndex] = lateCancellation;
     syncPackageUsage(pkg);
     await writeAppState(state);
     res.json({ ok: true, package: pkg });
@@ -1014,20 +1027,25 @@ app.post("/api/packages/:packageId/undo-session", requireAdminAuth, async (req, 
       res.status(404).json({ error: "Package not found." });
       return;
     }
-    if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+    syncPackageUsage(pkg);
     if (pkg.sessionUseDates.length > 0) {
       if (dateRaw) {
-        const removeIndex = pkg.sessionUseDates.findIndex((item) => {
-          const isoDate = String(item || "").slice(0, 10);
-          return isoDate === dateRaw;
-        });
+        let removeIndex = -1;
+        for (let index = pkg.sessionUseDates.length - 1; index >= 0; index -= 1) {
+          if (String(pkg.sessionUseDates[index] || "").slice(0, 10) === dateRaw) {
+            removeIndex = index;
+            break;
+          }
+        }
         if (removeIndex === -1) {
           res.status(400).json({ error: "No used session found on that date for this package." });
           return;
         }
         pkg.sessionUseDates.splice(removeIndex, 1);
+        pkg.sessionUseLateCancellations.splice(removeIndex, 1);
       } else {
         pkg.sessionUseDates.pop();
+        pkg.sessionUseLateCancellations.pop();
       }
     }
     syncPackageUsage(pkg);

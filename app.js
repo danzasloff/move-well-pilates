@@ -479,6 +479,13 @@ function getPackageSessionsUsed(pkg) {
 function syncPackageUsage(pkg) {
   if (!pkg) return;
   if (!Array.isArray(pkg.sessionUseDates)) pkg.sessionUseDates = [];
+  if (!Array.isArray(pkg.sessionUseLateCancellations)) pkg.sessionUseLateCancellations = [];
+  pkg.sessionUseLateCancellations = pkg.sessionUseLateCancellations
+    .slice(0, pkg.sessionUseDates.length)
+    .map(Boolean);
+  while (pkg.sessionUseLateCancellations.length < pkg.sessionUseDates.length) {
+    pkg.sessionUseLateCancellations.push(false);
+  }
   pkg.sessionsUsed = getPackageSessionsUsed(pkg);
 }
 
@@ -866,17 +873,17 @@ async function apiDeleteClient(clientId) {
   });
 }
 
-async function apiUsePackageSession(packageId, dateValue) {
+async function apiUsePackageSession(packageId, dateValue, lateCancellation = false) {
   await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/use-session`, {
     method: "POST",
-    body: JSON.stringify({ date: dateValue }),
+    body: JSON.stringify({ date: dateValue, lateCancellation }),
   });
 }
 
-async function apiEditPackageSessionDate(packageId, useIndex, dateValue) {
+async function apiEditPackageSessionDate(packageId, useIndex, dateValue, lateCancellation = false) {
   await apiFetch(`/api/packages/${encodeURIComponent(packageId)}/edit-session-date`, {
     method: "POST",
-    body: JSON.stringify({ useIndex, date: dateValue }),
+    body: JSON.stringify({ useIndex, date: dateValue, lateCancellation }),
   });
 }
 
@@ -1143,6 +1150,7 @@ function createPackageRecord(clientId, type, purchaseDate, squarePaymentId, squa
     sessionsTotal: cfg.sessions,
     sessionsUsed: 0,
     sessionUseDates: [],
+    sessionUseLateCancellations: [],
     purchaseDate,
     neverExpires: Boolean(neverExpires),
     preTax: price,
@@ -1159,7 +1167,9 @@ function openSessionHistoryDialog(pkg) {
   if (!dialog || !title || !content) return;
 
   const pkgLabel = PACKAGE_TYPES.find((p) => p.key === pkg.type)?.label || pkg.type;
+  syncPackageUsage(pkg);
   const useDates = Array.isArray(pkg.sessionUseDates) ? pkg.sessionUseDates : [];
+  const lateCancellations = pkg.sessionUseLateCancellations;
   title.textContent = `Session Usage History: ${pkgLabel}`;
   content.innerHTML = "";
 
@@ -1168,29 +1178,38 @@ function openSessionHistoryDialog(pkg) {
   } else {
     const list = createEl("ol");
     useDates
-      .map((date, index) => ({ date, index }))
+      .map((date, index) => ({ date, index, lateCancellation: Boolean(lateCancellations[index]) }))
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .forEach((entry, displayIndex) => {
         const item = createEl("li", "session-history-item");
+        const historyCopy = createEl("span", "session-history-copy");
         const dateText = createEl("span", "", `${displayIndex + 1}. ${formatDate(entry.date)}`);
+        historyCopy.appendChild(dateText);
+        if (entry.lateCancellation) {
+          historyCopy.appendChild(createEl("span", "late-cancellation-badge", "Late cancellation"));
+        }
         const editBtn = createEl("button", "text-link", "Edit");
         editBtn.type = "button";
         editBtn.addEventListener("click", () => {
           const dialog = document.getElementById("session-use-date-dialog");
           const input = document.getElementById("session-use-date-input");
+          const lateCancellationInput = document.getElementById("session-late-cancellation-input");
+          const lateCancellationOption = document.getElementById("session-late-cancellation-option");
           const title = document.getElementById("session-use-date-title");
           const submitBtn = document.getElementById("session-use-date-submit-btn");
-          if (!dialog || !input || !title || !submitBtn) return;
+          if (!dialog || !input || !lateCancellationInput || !lateCancellationOption || !title || !submitBtn) return;
           pendingSessionDateEdit = { packageId: pkg.id, useIndex: entry.index };
           pendingSessionUsePackageId = null;
           pendingSessionUndoPackageId = null;
           input.value = toDateInputValue(entry.date);
-          title.textContent = "Edit Session Date";
-          submitBtn.textContent = "Save Date";
+          lateCancellationInput.checked = entry.lateCancellation;
+          lateCancellationOption.hidden = false;
+          title.textContent = "Edit Session Use";
+          submitBtn.textContent = "Save Changes";
           closeDialog(document.getElementById("session-history-dialog"));
           openDialog(dialog);
         });
-        item.append(dateText, editBtn);
+        item.append(historyCopy, editBtn);
         list.appendChild(item);
       });
     content.appendChild(list);
@@ -1601,7 +1620,6 @@ function renderVisitSection(client) {
         noteBody.textContent = "No notes.";
       }
       noteCell.appendChild(noteBody);
-      noteCell.appendChild(createEl("span", "meta visit-note-created", `Created ${formatDate(item.createdAt)}`));
       const actions = createEl("div", "visit-note-actions");
       const editBtn = createEl("button", "text-link", "Edit");
       editBtn.type = "button";
@@ -1833,13 +1851,17 @@ function renderPackageSection(client) {
     useBtn.addEventListener("click", () => {
       const dialog = document.getElementById("session-use-date-dialog");
       const input = document.getElementById("session-use-date-input");
+      const lateCancellationInput = document.getElementById("session-late-cancellation-input");
+      const lateCancellationOption = document.getElementById("session-late-cancellation-option");
       const title = document.getElementById("session-use-date-title");
       const submitBtn = document.getElementById("session-use-date-submit-btn");
-      if (!dialog || !input || !title || !submitBtn) return;
+      if (!dialog || !input || !lateCancellationInput || !lateCancellationOption || !title || !submitBtn) return;
       pendingSessionUsePackageId = pkg.id;
       pendingSessionDateEdit = null;
       pendingSessionUndoPackageId = null;
       input.value = toPacificDateInputValue();
+      lateCancellationInput.checked = false;
+      lateCancellationOption.hidden = false;
       title.textContent = "Use 1 Session";
       submitBtn.textContent = "Use Session";
       openDialog(dialog);
@@ -1851,14 +1873,18 @@ function renderPackageSection(client) {
     unuseBtn.addEventListener("click", () => {
       const dialog = document.getElementById("session-use-date-dialog");
       const input = document.getElementById("session-use-date-input");
+      const lateCancellationInput = document.getElementById("session-late-cancellation-input");
+      const lateCancellationOption = document.getElementById("session-late-cancellation-option");
       const title = document.getElementById("session-use-date-title");
       const submitBtn = document.getElementById("session-use-date-submit-btn");
-      if (!dialog || !input || !title || !submitBtn) return;
+      if (!dialog || !input || !lateCancellationInput || !lateCancellationOption || !title || !submitBtn) return;
       pendingSessionUsePackageId = null;
       pendingSessionDateEdit = null;
       pendingSessionUndoPackageId = pkg.id;
       const lastUsedDate = useDates.length > 0 ? useDates[useDates.length - 1] : null;
       input.value = toDateInputValue(lastUsedDate);
+      lateCancellationInput.checked = false;
+      lateCancellationOption.hidden = true;
       title.textContent = "Undo Session";
       submitBtn.textContent = "Undo Session";
       openDialog(dialog);
@@ -3198,10 +3224,12 @@ function setupSessionUseDateDialog() {
   const dialog = document.getElementById("session-use-date-dialog");
   const form = document.getElementById("session-use-date-form");
   const input = document.getElementById("session-use-date-input");
+  const lateCancellationInput = document.getElementById("session-late-cancellation-input");
+  const lateCancellationOption = document.getElementById("session-late-cancellation-option");
   const cancelBtn = document.getElementById("session-use-date-cancel-btn");
   const title = document.getElementById("session-use-date-title");
   const submitBtn = document.getElementById("session-use-date-submit-btn");
-  if (!dialog || !form || !input || !cancelBtn || !title || !submitBtn) return;
+  if (!dialog || !form || !input || !lateCancellationInput || !lateCancellationOption || !cancelBtn || !title || !submitBtn) return;
 
   dialog.addEventListener("close", () => setDialogError(form, ""));
 
@@ -3209,6 +3237,8 @@ function setupSessionUseDateDialog() {
     pendingSessionUsePackageId = null;
     pendingSessionDateEdit = null;
     pendingSessionUndoPackageId = null;
+    lateCancellationInput.checked = false;
+    lateCancellationOption.hidden = false;
     title.textContent = "Use 1 Session";
     submitBtn.textContent = "Use Session";
     closeDialog(dialog);
@@ -3227,7 +3257,7 @@ function setupSessionUseDateDialog() {
     if (pendingSessionDateEdit) {
       const editRef = pendingSessionDateEdit;
       try {
-        await apiEditPackageSessionDate(editRef.packageId, editRef.useIndex, input.value);
+        await apiEditPackageSessionDate(editRef.packageId, editRef.useIndex, input.value, lateCancellationInput.checked);
         await refreshStateAndRender();
       } catch (err) {
         if (err?.code !== "AUTH_EXPIRED") {
@@ -3278,7 +3308,7 @@ function setupSessionUseDateDialog() {
       return;
     }
     try {
-      await apiUsePackageSession(packageId, input.value);
+      await apiUsePackageSession(packageId, input.value, lateCancellationInput.checked);
       await refreshStateAndRender();
     } catch (err) {
       if (err?.code !== "AUTH_EXPIRED") {

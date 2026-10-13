@@ -11,7 +11,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20261010-calm-studio-8" />
+    <link rel="stylesheet" href="styles.css?v=20261012-late-cancellation-2" />
   </head>
   <body>
     <section id="admin-login-view" class="admin-login-view">
@@ -230,6 +230,10 @@
       <form id="session-use-date-form" class="dialog-form">
         <h3 id="session-use-date-title">Use 1 Session</h3>
         <label>Session Date <input id="session-use-date-input" type="date" required /></label>
+        <label id="session-late-cancellation-option" class="inline-checkbox-row session-late-cancellation-option">
+          <input id="session-late-cancellation-input" type="checkbox" />
+          <span>Late cancellation</span>
+        </label>
         <menu>
           <button id="session-use-date-cancel-btn" type="button">Cancel</button>
           <button id="session-use-date-submit-btn" type="submit" class="button primary">Use Session</button>
@@ -242,6 +246,6 @@
     </footer>
     </div>
 
-    <script src="app.js?v=20261010-calm-studio-5"></script>
+    <script src="app.js?v=20261012-late-cancellation-2"></script>
   </body>
 </html>
