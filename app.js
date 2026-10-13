@@ -1176,17 +1176,25 @@ function openSessionHistoryDialog(pkg) {
   if (useDates.length === 0) {
     content.appendChild(createEl("p", "meta", "No sessions have been marked used yet."));
   } else {
-    const list = createEl("ol");
+    const list = createEl("ol", "session-history-list");
     useDates
       .map((date, index) => ({ date, index, lateCancellation: Boolean(lateCancellations[index]) }))
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .forEach((entry, displayIndex) => {
         const item = createEl("li", "session-history-item");
         const historyCopy = createEl("span", "session-history-copy");
-        const dateText = createEl("span", "", `${displayIndex + 1}. ${formatDate(entry.date)}`);
+        const dateText = createEl("span", "session-history-date", `${displayIndex + 1}. ${formatDate(entry.date)}`);
         historyCopy.appendChild(dateText);
         if (entry.lateCancellation) {
-          historyCopy.appendChild(createEl("span", "late-cancellation-badge", "Late cancellation"));
+          const lateCancellationBadge = createEl("span", "late-cancellation-badge");
+          lateCancellationBadge.setAttribute("aria-label", "Late cancellation");
+          lateCancellationBadge.title = "Late cancellation";
+          const fullLabel = createEl("span", "late-cancellation-label-full", "Late cancellation");
+          const shortLabel = createEl("span", "late-cancellation-label-short", "Late cancel");
+          fullLabel.setAttribute("aria-hidden", "true");
+          shortLabel.setAttribute("aria-hidden", "true");
+          lateCancellationBadge.append(fullLabel, shortLabel);
+          historyCopy.appendChild(lateCancellationBadge);
         }
         const editBtn = createEl("button", "text-link", "Edit");
         editBtn.type = "button";

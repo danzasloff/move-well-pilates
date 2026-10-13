@@ -860,18 +860,31 @@ textarea {
   text-decoration: underline;
 }
 
+.session-history-list {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .session-history-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
+  gap: 1rem;
 }
 
 .session-history-copy {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-  flex-wrap: wrap;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.session-history-date {
+  white-space: nowrap;
 }
 
 .late-cancellation-badge {
@@ -885,6 +898,34 @@ textarea {
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+}
+
+.late-cancellation-label-short {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .session-history-item {
+    gap: 0.8rem;
+  }
+
+  .session-history-copy {
+    gap: 0.4rem;
+  }
+
+  .late-cancellation-badge {
+    min-height: 22px;
+    padding: 0.14rem 0.42rem;
+  }
+
+  .late-cancellation-label-full {
+    display: none;
+  }
+
+  .late-cancellation-label-short {
+    display: inline;
+  }
 }
 
 .session-late-cancellation-option {

@@ -1,9 +1,9 @@
-const CACHE_NAME = "move-well-shell-v12-late-cancellation";
+const CACHE_NAME = "move-well-shell-v13-late-cancellation-mobile";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20261012-late-cancellation-2",
-  "/app.js?v=20261012-late-cancellation-2",
+  "/styles.css?v=20261012-late-cancellation-3",
+  "/app.js?v=20261012-late-cancellation-3",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/icons/icon-192.png",
